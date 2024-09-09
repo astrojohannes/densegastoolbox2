@@ -1,0 +1,11 @@
+# Linux
+
+1) Create and activate virtual python environment
+python3 -m venv myenv
+source venv/bin/activate
+
+2) Install requirements
+pip install -r requirements.txt
+
+3) Adopt and run example.py for your project
+
