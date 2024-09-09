@@ -12,7 +12,7 @@ if __name__ == "__main__":
     ##############################################################
     #################### USER INPUT BELOW ########################
     ##############################################################
-    obsdata_file = 'ascii_CLAWS_highSNR.txt'    # table of observed intensities in Tmb [K km/s]
+    obsdata_file = 'ascii_galaxy.txt'    # table of observed intensities in Tmb [K km/s]
     
     ###################################
     # Note that the input file (obsdata_file) must have a 1-line
@@ -78,16 +78,16 @@ if __name__ == "__main__":
                                             # or set tau='tau_fiducial' to use EMPIRE-based fixed optical depths
                                             # this reproduces results from previous old DGT v1.X
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    snr_line='13CO10'                         # only use data above SNR cut in given line, should be faintest line
+    snr_line='13CO10'                       # only use data above SNR cut in given line, should be faintest line
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
-    snr_lim=20.0                             # this is the corresponding SNR cut
+    snr_lim=10.0                            # this is the corresponding SNR cut
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
     plotting=True                           # create plots
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     domcmc=True                             # use MCMC for parameter estimation; this is recommended, but may take very long
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
-    nsims=10000                              # number of MCMC simulations to perform (should be >1000, better even more)
-    n_cpus = 10                             # Upper limit for number of cpus used for MCMC 
+    nsims=20000                              # number of MCMC simulations to perform (should be >1000, better even more)
+    n_cpus = 16                             # Upper limit for number of cpus used for MCMC 
     #######################################################################################################
 
     # call Dense GasTool box

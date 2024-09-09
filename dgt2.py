@@ -9,8 +9,6 @@
 ######################################################################################
 
 import os
-import sys
-import importlib.util
 import numpy as np
 import numpy.ma as ma
 import matplotlib as mpl
@@ -19,22 +17,21 @@ import pandas as pd
 import re
 from pathlib import Path
 from matplotlib import rc
-from scipy.interpolate import Rbf, NearestNDInterpolator, LinearNDInterpolator, griddata
+from scipy.interpolate import Rbf
 from scipy.stats import chi2 as scipychi2
 from scipy.spatial import distance
 from pylab import *
 from read_grid_ndist2 import read_grid_ndist,linename_obs2mdl,linename_mdl2obs
-import emcee
-from multiprocessing import Pool
+import mcmc
 from datetime import datetime
 import warnings
 from mcmc_corner_plot2 import mcmc_corner_plot
 
-mpl.use("Agg")
+mpl.use("TkAgg")
 
 cmap='cubehelix'
 
-DEBUG=False
+DEBUG=True
 
 # ignore some warnings
 warnings.filterwarnings("ignore", message="divide by zero encountered in divide")
@@ -82,107 +79,7 @@ def find_nearest(models,values,cnt=1):
 
     return idx
 
-
 ##################################################################
-
-def mymcmc(grid_theta, grid_loglike, ndim, nwalkers, backend, interp, nsteps, labels, conf, n_cpus=2):
-
-    ##### Define parameter grid for random selection of initial points for walker #######
-    ##### PARAMETER GRID #####
-    grid_n=1.9+np.arange(32)*0.1
-
-    grid_T=conf.valid_T[1:]  # first value is 0
-    grid_width=conf.valid_W[1:]  # first value is 0
-    grid_tau_thin=[0.1,0.2,0.3]		# cross-check with calc_linerats.py
-    grid_tau_middle=[0.8,1.1,1.5]           # cross-check with calc_linerats.py
-    grid_tau_thick=[5.0,6.5,8.0]        # cross-check with calc_linerats.py
-
-    grid_tau={}
-    for ii,lbl in enumerate(labels[3:]):
-        if lbl=='tau_12co': grid_tau[ii]=grid_tau_thick
-        elif lbl=='tau_13co' or lbl=='tau_c18o' or lbl=='tau_c17o': grid_tau[ii]=grid_tau_thin
-        else: grid_tau[ii]=grid_tau_middle
-
-    if ndim==3:     # case tau is fixed
-        pos = [np.array([ \
-           np.random.choice(grid_n,size=1)[0],\
-           np.random.choice(grid_T,size=1)[0],\
-           np.random.choice(grid_width,size=1)[0]],\
-           dtype=np.float64) for i in range(nwalkers)]
-    else:   # case tau is free
-        pos = [np.array([ \
-           np.random.choice(grid_n,size=1)[0],\
-           np.random.choice(grid_T,size=1)[0],\
-           np.random.choice(grid_width,size=1)[0]]+\
-           [np.random.choice(grid_tau[ii],size=1)[0] for ii,lbl in enumerate(labels[3:])],\
-           dtype=np.float64) for i in range(nwalkers)]
-
-    with Pool(processes=n_cpus) as pool:
-        sampler = emcee.EnsembleSampler(nwalkers, ndim, getloglike, args=([grid_theta, grid_loglike, interp]), pool=pool, backend=backend)
-        sampler.run_mcmc(pos, nsteps, progress=True, store=True)
-
-############################################################
-
-
-def getloglike(theta, grid_theta, grid_loglike, interp):
-
-    intheta=np.array(theta,dtype=np.float64)
-    diff=np.ones_like(grid_loglike)*1e20
-    isclose=np.zeros_like(grid_loglike,dtype=bool)
-
-    ###########################
-    # nearest neighbor loglike
-    if not interp:
-
-        for i in range(len(grid_theta.T)):
-            # calculate element-wise quadratic difference and sum it up
-            # to get index of nearest neighbour on grid     
-            diff[i]=((intheta-grid_theta.T[i])**2.0).sum()
-            isclose[i]=np.allclose(intheta,grid_theta.T[i],rtol=1.0)
-
-        # find nearest neighbour in multidim space
-        ind=np.array(diff,dtype=np.float64).argmin()
-        this_loglike=grid_loglike[ind]
-
-        # check if the nearest neighbour is within some relative tolerance
-        if not isclose[ind]:
-            this_loglike = -np.inf
-
-        if not np.isfinite(this_loglike):
-            this_loglike = -np.inf
-
-    #############################
-    # interpolated loglike
-    else:
-
-        cutout_idx=find_nearest(grid_theta,intheta,1000)
-        grid_theta_cutout=np.array([x[cutout_idx] for x in grid_theta])
-        grid_loglike_cutout=np.array(grid_loglike[cutout_idx])
-
-
-        for i in range(len(grid_theta_cutout.T)):
-            # calculate element-wise quadratic difference and sum it up
-            # to get index of nearest neighbour on grid     
-            diff[i]=((intheta-grid_theta_cutout.T[i])**2.0).sum()
-            isclose[i]=np.allclose(intheta,grid_theta_cutout.T[i],rtol=1.0)
-
-        if not isclose[cutout_idx[0]]:
-            this_loglike = -np.inf
-
-        else:
-            # griddata with method='linear' sometimes fails with a Qhull error
-            this_loglike = float(np.nan_to_num(griddata(grid_theta_cutout.T, grid_loglike_cutout, intheta, method='linear', rescale=False),nan=-np.inf))
-
-        """
-        # same applies to LinearNDInterpolator
-        this_interp = LinearNDInterpolator(grid_theta.T,grid_loglike,rescale=False)
-        this_loglike = float(this_interp(intheta))
-        """
-
-    return this_loglike
-
-
-#####################################################################
 
 def scalar(array):
     if array.size==0:
@@ -203,7 +100,7 @@ def read_obs(filename,valid_lines):
         line=alllines[0].replace('#','').replace('# ','').replace('#\t','')
 
         # read keys
-        keys=re.sub(r'\s+',' ',line).strip().split(' ')
+        keys=re.sub('\s+',' ',line).strip().split(' ')
 
     f.close()
 
@@ -212,7 +109,7 @@ def read_obs(filename,valid_lines):
         alllines=f.readlines()
         lines=alllines[1:]
         for i in range(len(keys)):
-            get_col = lambda col: (re.sub(r'\s+',' ',line).strip().split(' ')[i] for line in lines if line)
+            get_col = lambda col: (re.sub('\s+',' ',line).strip().split(' ')[i] for line in lines if line)
             val=np.array([float(a) for a in get_col(i)],dtype=np.float64)
             obsdata[keys[i]]=val
             keys[i] + ": "+str(val) 
@@ -235,9 +132,8 @@ def read_obs(filename,valid_lines):
             #obsdata.loc[obsdata[line] <= obsdata[uc], line] = np.nan
             """
             mask[line]=( (obsdata[line] > obsdata[uc]) & (obsdata[line]>0) )
-    
-    finalmask=[True for x in range(len(obsdata))]
 
+    finalmask=[True for x in range(len(obsdata))]
     for mm in mask.keys():
         finalmask=np.logical_and(finalmask,mask[mm])
 
@@ -255,13 +151,6 @@ def read_obs(filename,valid_lines):
 
 ##################################################################
 
-def is_list_or_array_with_length_greater_than_one(variable):
-    if isinstance(variable, (list, np.ndarray)):
-        return True
-    return False
-
-##################################################################
-
 def write_result(result,outfile,domcmc):
     result=np.array(result,dtype=object)
 
@@ -271,28 +160,20 @@ def write_result(result,outfile,domcmc):
     r=result.transpose()
 
     if not domcmc:
-        ra,de,cnt,dgf,chi2,n,T,width,str_taus,XCO,str_lines=r
-        if is_list_or_array_with_length_greater_than_one(ra):
-            out=np.column_stack((ra,de,cnt,dgf,chi2,n,T,width,str_taus,XCO,str_lines))
-        else:
-            out=[np.array([ra,de,cnt,dgf,chi2,n,T,width,str_taus,XCO,str(str_lines).replace(', ','|').replace("'","").replace('"','')],dtype=object)]
-
+        pixid,ra,de,cnt,dgf,chi2,n,T,width,str_taus,XCO,str_lines=r
+        out=np.column_stack((pixid,ra,de,cnt,dgf,chi2,n,T,width,str_taus,XCO,str_lines))
         np.savetxt(tmpoutfile,out,\
-            fmt="%.8f\t%.8f\t%d\t%d\t%.4f\t%.2f\t%.2f\t%.2f\t%s\t%.4f\t%s", \
-            header="RA\tDEC\tcnt\tdgf\tchi2\tlog_n\tT\twidth\ttau_lines\tXCO_19\tlines_obs")
+            fmt="%d\t%.8f\t%.8f\t%d\t%d\t%.4f\t%.2f\t%.2f\t%.2f\t%s\t%.4f\t%s", \
+            header="ID\tRA\tDEC\tcnt\tdgf\tchi2\tlog_n\tT\twidth\ttau_lines\tXCO_19\tlines_obs")
     else:
-        ra,de,cnt,dgf,n,n_up,n_lo,T,T_up,T_lo,width,width_up,width_lo,str_taus,XCO,str_lines=r
-        if is_list_or_array_with_length_greater_than_one(ra):
-            out=np.column_stack((ra,de,cnt,dgf,n,n_up,n_lo,T,T_up,T_lo,width,width_up,width_lo,str_taus,XCO,str_lines))
-        else:
-            out=[np.array([ra,de,cnt,dgf,n,n_up,n_lo,T,T_up,T_lo,width,width_up,width_lo,str_taus,XCO,str(str_lines).replace(',','|').replace("'","").replace('"','')],dtype=object)]
-
+        pixid,ra,de,cnt,dgf,chi2,n,n_up,n_lo,T,T_up,T_lo,width,width_up,width_lo,str_taus,XCO,str_lines=r
+        out=np.column_stack((pixid,ra,de,cnt,dgf,chi2,n,n_up,n_lo,T,T_up,T_lo,width,width_up,width_lo,str_taus,XCO,str_lines))
         np.savetxt(tmpoutfile,out,\
-            fmt="%.8f\t%.8f\t%d\t%d\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%s\t%.4f\t%s", \
-            header="RA\tDEC\tcnt\tdgf\tlog_n\te_n1\te_n2\tT\te_T1\te_T2\twidth\te_width1\te_width2\ttau_lines\tXCO_19\tlines_obs")
+            fmt="%d\t%.8f\t%.8f\t%d\t%d\t%.4f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%s\t%.4f\t%s", \
+            header="ID\tRA\tDEC\tcnt\tdgf\tchi2\tlog_n\te_n1\te_n2\tT\te_T1\te_T2\twidth\te_width1\te_width2\ttau_lines\tXCO_19\tlines_obs")
 
     # clean up
-    replacecmd="sed -e\"s/', '/|/g;s/'//g;s/[//g;s/]//g\""
+    replacecmd="sed -e\"s/', '/|/g;s/'//g;s/\[//g;s/\]//g\""
     os.system("cat "+tmpoutfile + "| "+ replacecmd + " > " + outfile)
     os.system("rm -rf "+tmpoutfile)
 
@@ -370,10 +251,6 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
     conf = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(conf)
 
-    # get fiducial tau values
-    if userTau == 'tau_fiducial':
-        userTau = tau_fiducial(type_of_models) 
-
     # check user inputs (T and width)
     valid_T=conf.valid_T
     valid_W=conf.valid_W
@@ -402,10 +279,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
 
     obs,rows_in_file,rows_selected=read_obs(obsdata_file,valid_lines)
 
-    print("[INFO] Total rows in file: "+str(rows_in_file)+". Usable rows after removing rows with upper limits: "+str(rows_selected))
-    if int(rows_selected) < 1:
-        print("[ERROR] No input data to process. Exiting.")
-        exit(1)
+    print("[INFO] Total rows in file: "+str(rows_in_file)+". Usable rows after removing upper limits: "+str(rows_selected))
 
     if DEBUG:
         from tabulate import tabulate
@@ -417,6 +291,9 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
     ###########################
     ##### validate input ######
     ###########################
+
+    # check for id in input file
+    have_id=False
 
     # check for coordinates in input file
     have_radec=False
@@ -430,6 +307,16 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
     else:
         have_radec=False
 
+    if 'id' in obs.keys():
+        have_id=True
+        id_pixel=obs['id']
+
+    if 'ID' in obs.keys():
+        have_id=True
+        id_pixel=obs['ID']
+
+    # make sure the id is an integer
+    id_pixel=np.array([int(i) for i in id_pixel])
 
     if not have_radec:
         print("!!!")
@@ -539,7 +426,6 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
     ###########################
     mdl={}
     mdl = read_grid_ndist(obstrans,userT,userWidth,mytau,powerlaw,type_of_models,usecsv)
-
     print("[INFO] Grid size: "+str(len(mdl['tkin'])))
 
     if DEBUG:
@@ -587,7 +473,17 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
     #############################################################
     #############################################################
     result=[]
-    for p in range(len(ra)):
+
+    if not have_id:
+        pixels=range(len(ra))
+    else:
+        pixels=id_pixel
+
+    for p,pixnr in enumerate(pixels):
+
+        if not have_id:
+            pixnr=p+1
+
         #################################
         ####### calculate chi2 ##########
         #################################
@@ -628,7 +524,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
         densefrac=ma.array(mdl['fdense_thresh'])
 
         # filter out large values (since loglike is propto 10**chi2 --> chi2>100 leads to crazy high numbers 
-        chi2lowlim,chi2uplim=0,50
+        chi2lowlim,chi2uplim=0,9999
         #chi2lowlim,chi2uplim=np.quantile(chi2,[0.0,0.95])
 
         # create masks
@@ -680,8 +576,8 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
 
         # These limits correspond to +/-1 sigma error
         if dgf>0:
-            cutoff=0.05  # area to the right of critical value; here 5% --> 95% confidence  --> +/- 2sigma
-            #cutoff=0.32  # area to the right of critical value; here 32% --> 68% confidence --> +/- 1sigma
+            #cutoff=0.05  # area to the right of critical value; here 5% --> 95% confidence  --> +/- 2sigma
+            cutoff=0.32  # area to the right of critical value; here 32% --> 68% confidence --> +/- 1sigma
             deltachi2=scipychi2.ppf(1-cutoff, dgf)
         else:
             print("DGF is zero or negative.")
@@ -703,6 +599,11 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
         bestTau=bestTau[1:]
         bestchi2=round(bestchi2,2)
         bestreducedchi2=round(bestchi2/dgf,2)
+
+
+        print('[INFO] Minimum reduced chi2 is '+str(bestreducedchi2))
+        print('[INFO] Log density at chi2 minimum is '+str(round(bestn,2)))
+
 
         #################################################
         ########## Show Chi2 result on screen ###########
@@ -739,7 +640,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
 
             if SNR>snr_lim and bestn>0:
                 print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
-                print("#### Bestfit Parameters for pixel nr. "+str(p+1)+" ("+str(round(ra[p],5))+","+str(round(de[p],5))+ ") ####")
+                print("#### Bestfit Parameters for pixel nr. "+str(pixnr)+" ("+str(round(ra[p],5))+","+str(round(de[p],5))+ ") ####")
                 print("chi2\t\t" + str(bestchi2))
                 print("red. chi2\t\t" + str(bestreducedchi2))
                 print("log n\t\t" + str(bestn))
@@ -751,13 +652,13 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
 
                 #############################################
                 # save results in array for later file export
-                result.append([ra[p],de[p],ct_l,dgf,bestchi2,bestn,bestT,bestwidth,bestTau,XCO,obstrans])
+                result.append([pixnr,ra[p],de[p],ct_l,dgf,bestchi2,bestn,bestT,bestwidth,bestTau,XCO,obstrans])
                 do_this_plot=True
             else:
                 print("!-!-!-!-!-!")
-                print("Pixel no. " +str(p+1)+ " --> SNR too low or density<0.")
+                print("Pixel no. " +str(pixnr)+ " --> SNR too low or density<0.")
                 print()
-                result.append([ra[p],de[p],ct_l,dgf,-99999.9,-99999.9,-99999.9,-99999.9,'-99999.9',-99999.9,obstrans])
+                result.append([pixnr,ra[p],de[p],ct_l,dgf,-99999.9,-99999.9,-99999.9,-99999.9,'-99999.9',-99999.9,obstrans])
                 do_this_plot=False
 
         ###################################################################
@@ -767,7 +668,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
 
         if domcmc:
             if SNR>snr_lim and bestn>0:
-                print("[INFO] Preparing MCMC")
+                print("[INFO] Preparing MCMC for pixel "+str(pixnr))
  
                 #### Create directory for output png files ###
                 if not os.path.exists('./results2/'):
@@ -788,7 +689,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
                         labels.append(ss)
                 
                 grid_theta = np.array(grid_theta,dtype=np.float64)
-                grid_loglike  = -0.5 * 10**chi2     # note that variable "chi2" is in fact log10(chi2) here
+                grid_loglike  = -0.5 * chi2
 
                 if DEBUG:
                     print("LOGLIKE")
@@ -801,35 +702,19 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
                     print()
                     """
 
-                # Set up the backend
-                # Don't forget to clear it in case the file already exists
-                status_filename = "./results2/"+obsdata_file[:-4]+"_mcmc_"+str(p+1)+".h5"
-
-                path = Path(status_filename)
-                if not path.is_file():
-                    print("[INFO] Saving MCMC chain in h5 file.")
-                    starttime=datetime.now()
- 
-                    backend = emcee.backends.HDFBackend(status_filename)
-                    backend.reset(nwalkers, ndim)
-
-                    #### main ####
-                    mymcmc(grid_theta, grid_loglike, ndim, nwalkers, backend, interp, nsteps, labels, conf, n_cpus = n_cpus)
-                    ##############
-
-                    duration=datetime.now()-starttime
-                    print("[INFO] Duration for Pixel "+str(p+1)+": "+str(duration.seconds)+"sec")
-
+                if not Path('./chains'+str(pixnr)).is_dir():
+                    mcmc.mymcmc(grid_theta, grid_loglike, ndim, nwalkers, interp, nsteps, labels, conf, pixelnr=str(pixnr))
                 else:
-                    print("[INFO] Re-using existing h5 file ("+str(status_filename)+"), no new MCMC is created.")
+                    print('[INFO] Re-using previously generated chain for pixel id'+str(pixnr))
 
                 ########## MAKE CORNER PLOT #########
-                outpngfile="./results2/"+obsdata_file[:-4]+"_mcmc_"+str(p+1)+".png"
+                outpngfile="./results2/"+obsdata_file[:-4]+"_mcmc_"+str(pixnr)+".png"
                 bestn_mcmc_val,bestn_mcmc_upper,bestn_mcmc_lower,\
                     bestT_mcmc_val,bestT_mcmc_upper,bestT_mcmc_lower,\
                     bestW_mcmc_val,bestW_mcmc_upper,bestW_mcmc_lower,\
                     taulist = \
-                    mcmc_corner_plot(status_filename,outpngfile,labels)
+                    mcmc_corner_plot(outpngfile,labels,ndim,pixelnr=str(pixnr))
+
 
                 ############### LOOKUP ##################
                 ######### CONVERSION FACTOR XCO #########
@@ -843,7 +728,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
                         tauval=[]
                         for ii,lbl in enumerate(labels[3:]):
                             this_species=lbl.split('_')[1]
-                            bestTau_mcmc_val,bestTau_mcmc_upper,bestTau_mcmc_lower=taulist[ii]
+                            _,bestTau_mcmc_val,bestTau_mcmc_upper,bestTau_mcmc_lower=taulist[ii]
                             tauarr.append(mdl['tau_'+this_species])
                             tauval.append(float(bestTau_mcmc_val))
     
@@ -866,40 +751,35 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
                 #########################################
 
                 print("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
-                print("#### Bestfit Parameters for pixel nr. "+str(p+1)+" ("+str(round(ra[p],5))+","+str(round(de[p],5))+ ") ####")
+                print("#### Bestfit Parameters for pixel nr. "+str(pixnr)+" ("+str(round(ra[p],5))+","+str(round(de[p],5))+ ") ####")
                 print("log n\t\t" + str(bestn_mcmc_val) + " " + str(bestn_mcmc_upper) + " " + str(bestn_mcmc_lower))
                 print("T\t\t" + str(bestT_mcmc_val) + " " + str(bestT_mcmc_upper) + " " + str(bestT_mcmc_lower))
                 print("Width\t\t" + str(bestW_mcmc_val) + " " + str(bestW_mcmc_upper) + " " + str(bestW_mcmc_lower))
                 if len(labels)>3:
                     for ii,lbl in enumerate(labels[3:]):
-                        bestTau_mcmc_val,bestTau_mcmc_upper,bestTau_mcmc_lower=taulist[ii]
+                        _,bestTau_mcmc_val,bestTau_mcmc_upper,bestTau_mcmc_lower=taulist[ii]
                         print(lbl+"\t\t" + str(bestTau_mcmc_val) + " " + str(bestTau_mcmc_upper) + " " + str(bestTau_mcmc_lower))
                 print("XCO_19\t\t" + str(XCO))
                 print()
 
-
                 #############################################
                 # save results in array for later file export
-                this_result = [ra[p],de[p],ct_l,dgf,float(bestn_mcmc_val),float(bestn_mcmc_upper),float(bestn_mcmc_lower),\
+                result.append([pixnr,ra[p],de[p],ct_l,dgf,float(bestchi2),float(bestn_mcmc_val),float(bestn_mcmc_upper),float(bestn_mcmc_lower),\
                                                     float(bestT_mcmc_val),float(bestT_mcmc_upper),float(bestT_mcmc_lower),\
                                                     float(bestW_mcmc_val),float(bestW_mcmc_upper),float(bestW_mcmc_lower),\
                                                     str(taulist).replace(', ',';'),\
                                                     XCO,\
-                                                    obstrans]
-                result.append(this_result)
-                this_result_file = "./results2/"+obsdata_file[:-4]+"_mcmc_"+str(p+1)+"_result.txt"
-                write_result(this_result,this_result_file,domcmc)
+                                                    obstrans])
                 do_this_plot=True 
                 ###################################################################
                 ###################################################################
 
-
             elif SNR<snr_lim:
-                print("[INFO] Skipping this pixel/row, because SNR for line " +str(snr_line) + " is lower than user constraint.")
+                print("[INFO] Skipping pixel id "+str(pixnr)+", because SNR for line " +str(snr_line) + " is lower than user constraint.")
                 do_this_plot=False
 
             elif bestn<=0:
-                print("[INFO] Skipping this pixel/row, because log-likelihood could not be constrained from chi2.")
+                print("[INFO] Skipping pixel id "+str(pixnr)+", because log-likelihood could not be constrained from chi2.")
                 do_this_plot=False
 
 
@@ -926,28 +806,28 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
             fig, ax = plt.subplots(2, 2, sharex='col', sharey='row',figsize=(11.5,8))
             # Chi2 vs n plot
 
-            ax[0,0].scatter(chi2, n,c=width, cmap='Accent',marker=',',s=4,vmin=width.min(),vmax=width.max())
-            ax[0,0].set_ylabel(r'$log\ n$') 
+            ax[0,0].scatter(chi2, np.log10(n),c=width, cmap='Accent',marker=',',s=4,vmin=width.min(),vmax=width.max())
+            ax[0,0].set_ylabel('$log\ n$') 
 
-            pl1=ax[0,1].scatter(zoom_chi2, zoom_n,c=zoom_width, cmap='Accent',marker=',',s=9,vmin=width.min(),vmax=width.max())
-            fig.colorbar(pl1,ax=ax[0,1],label=r'$\mathsf{width}$')
+            pl1=ax[0,1].scatter(zoom_chi2, np.log10(zoom_n),c=zoom_width, cmap='Accent',marker=',',s=9,vmin=width.min(),vmax=width.max())
+            fig.colorbar(pl1,ax=ax[0,1],label='$\mathsf{width}$')
 
             # Chi2 vs T plot
             ax[1,0].scatter(chi2, np.log10(T),c=width, cmap='Accent',marker=',',s=4,vmin=width.min(),vmax=width.max())
-            ax[1,0].set_xlabel(r'$\chi^2$')
-            ax[1,0].set_ylabel(r'$log\ T$') 
+            ax[1,0].set_xlabel('$\chi^2$')
+            ax[1,0].set_ylabel('$log\ T$') 
 
             # Chi2 vs T plot zoom-in
             zoom_T=T[chi2<bestchi2+deltachi2].compressed()
             pl2=ax[1,1].scatter(zoom_chi2, np.log10(zoom_T),c=zoom_width, cmap='Accent',marker=',',s=9,vmin=width.min(),vmax=width.max())
-            ax[1,1].set_xlabel(r'$\chi^2$')
-            fig.colorbar(pl2,ax=ax[1,1],label=r'$\mathsf{width}$')
+            ax[1,1].set_xlabel('$\chi^2$')
+            fig.colorbar(pl2,ax=ax[1,1],label='$\mathsf{width}$')
  
             # plot
             fig.subplots_adjust(left=0.06, bottom=0.06, right=1, top=0.96, wspace=0.04, hspace=0.04)
             fig = gcf()
-            fig.suptitle('Pixel: '+str(p+1)+' SNR('+snr_line+'): '+str(SNR), fontsize=14, y=0.99) 
-            chi2_filename=obsdata_file[:-4]+"_"+str(p+1)+'_chi2.png'
+            fig.suptitle('Pixel: ('+str(p)+') SNR('+snr_line+'): '+str(SNR), fontsize=14, y=0.99) 
+            chi2_filename=obsdata_file[:-4]+"_"+str(pixnr)+'_chi2.png'
             fig.savefig('./results2/'+chi2_filename) 
             #plt.show()
             plt.close()
@@ -957,71 +837,70 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
             # all parameters free: (n,T) vs. chi2
             if userT==0 and userWidth==0:
 
-                  x=zoom_n
+                  x=np.log10(zoom_n)
                   y=np.log10(zoom_T)
                   z=np.log10(zoom_chi2)
                   this_slice=zoom_width
                   this_bestval=bestwidth
-                  xlabel=r'$log\ n\ [cm^{-3}]$'
-                  ylabel=r'$log\ T\ [K]$'
-                  zlabel=r'$\mathsf{log\ \chi^2}$'
+                  xlabel='$log\ n\ [cm^{-3}]$'
+                  ylabel='$log\ T\ [K]$'
+                  zlabel='$\mathsf{log\ \chi^2}$'
 
-                  title='Pixel: '+str(p+1)+ ' | SNR('+snr_line+')='+str(SNR)
-                  pngoutfile='results2/'+obsdata_file[:-4]+"_"+str(p+1)+'_nT.png'
+                  title='Pixel: '+str(pixnr)+ ' | SNR('+snr_line+')='+str(SNR)
+                  pngoutfile='results2/'+obsdata_file[:-4]+"_"+str(pixnr)+'_nT.png'
 
                   makeplot(x,y,z,this_slice,this_bestval,xlabel,ylabel,zlabel,title,pngoutfile)
 
                   ########################## PLOT 3 #############################
                   # all parameters free: (n,width) vs. chi2
-                  x=zoom_n
+                  x=np.log10(zoom_n)
                   y=zoom_width
                   z=np.log10(zoom_chi2)
                   this_slice=zoom_T
                   this_bestval=bestT
-                  xlabel=r'$log\ n\ [cm^{-3}]$'
-                  ylabel=r'$width\ [dex]$'
-                  zlabel=r'$\mathsf{log\ \chi^2}$'
+                  xlabel='$log\ n\ [cm^{-3}]$'
+                  ylabel='$width\ [dex]$'
+                  zlabel='$\mathsf{log\ \chi^2}$'
 
-                  title='Pixel: '+str(p+1)+ ' | SNR('+snr_line+')='+str(SNR)
-                  pngoutfile='results2/'+obsdata_file[:-4]+"_"+str(p+1)+'_nW.png'
+                  title='Pixel: '+str(pixnr)+ ' | SNR('+snr_line+')='+str(SNR)
+                  pngoutfile='results2/'+obsdata_file[:-4]+"_"+str(pixnr)+'_nW.png'
 
                   makeplot(x,y,z,this_slice,this_bestval,xlabel,ylabel,zlabel,title,pngoutfile)
  
             # width fixed: (n,T) vs. chi2
             elif userT==0 and userWidth>0:
-                  x=zoom_n
+                  x=np.log10(zoom_n)
                   y=np.log10(zoom_T)
                   z=np.log10(zoom_chi2)
                   this_slice=zoom_width
                   this_bestval=bestwidth
-                  xlabel=r'$log\ n\ [cm^{-3}]$'
-                  ylabel=r'$log\ T\ [K]$'
-                  zlabel=r'$\mathsf{log\ \chi^2}$'
+                  xlabel='$log\ n\ [cm^{-3}]$'
+                  ylabel='$log\ T\ [K]$'
+                  zlabel='$\mathsf{log\ \chi^2}$'
 
-                  title='Pixel: '+str(p+1)+ ' | SNR('+snr_line+')='+str(SNR)
-                  pngoutfile='results2/'+obsdata_file[:-4]+"_"+str(p+1)+'_nT_fixedW.png'
+                  title='Pixel: '+str(pixnr)+ ' | SNR('+snr_line+')='+str(SNR)
+                  pngoutfile='results2/'+obsdata_file[:-4]+"_"+str(pixnr)+'_nT_fixedW.png'
 
                   makeplot(x,y,z,this_slice,this_bestval,xlabel,ylabel,zlabel,title,pngoutfile)
 
             # T fixed: (n,width) vs. chi2
             elif userT>0 and userWidth==0:
-                  x=zoom_n
+                  x=np.log10(zoom_n)
                   y=zoom_width
                   z=np.log10(zoom_chi2)
                   this_slice=zoom_T
                   this_bestval=bestT
-                  xlabel=r'$log\ n\ [cm^{-3}]$'
-                  ylabel=r'$width\ [dex]$'
-                  zlabel=r'$\mathsf{log\ \chi^2}$'
+                  xlabel='$log\ n\ [cm^{-3}]$'
+                  ylabel='$width\ [dex]$'
+                  zlabel='$\mathsf{log\ \chi^2}$'
 
-                  title='Pixel: '+str(p+1)+ ' | SNR('+snr_line+')='+str(SNR)
-                  pngoutfile='results2/'+obsdata_file[:-4]+"_"+str(p+1)+'_nW_fixedT.png'
+                  title='Pixel: '+str(pixnr)+ ' | SNR('+snr_line+')='+str(SNR)
+                  pngoutfile='results2/'+obsdata_file[:-4]+"_"+str(pixnr)+'_nW_fixedT.png'
 
                   makeplot(x,y,z,this_slice,this_bestval,xlabel,ylabel,zlabel,title,pngoutfile)
 
 
         del diff,chi2,n,T,width,densefrac,mchi2,mchi2invalid,mwidth,m1,m,grid_n,grid_T
-
 
     ################################################
     ################################################
@@ -1032,6 +911,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
         outtable=obsdata_file[:-4]+"_nT_mcmc.txt"
     resultfile="./results2/"+outtable
     write_result(result,resultfile,domcmc)
+
 
     #plt.show(block=True)
 
@@ -1052,16 +932,9 @@ def tau_error(valid_lines,valid_taus):
 ##################################################################################
 ##################################################################################
 
-def tau_fiducial(type_of_models):
+def tau_fiducial():
 
-    if type_of_models == 'co':
-        return ['CO10_6.5','CO21_6.5','CO32_6.5',\
-            '13CO10_0.2','13CO21_0.2','13CO32_0.2',\
-            'C18O10_0.1','C18O21_0.1','C18O32_0.1',\
-            'C17O10_0.1','C17O21_0.1','C17O32_0.1']
-
-    else:
-        return ['CO10_6.5','CO21_6.5','CO32_6.5',\
+    return ['CO10_6.5','CO21_6.5','CO32_6.5',\
             'HCN10_0.8','HCN21_0.8','HCN32_0.8',\
             'HCOP10_1.5','HCOP21_1.5','HCOP32_1.5',\
             '13CO10_0.2','13CO21_0.2','13CO32_0.2',\
