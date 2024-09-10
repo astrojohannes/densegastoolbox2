@@ -31,7 +31,7 @@ mpl.use("TkAgg")
 
 cmap='cubehelix'
 
-DEBUG=True
+DEBUG=False
 
 # ignore some warnings
 warnings.filterwarnings("ignore", message="divide by zero encountered in divide")
@@ -182,6 +182,7 @@ def write_result(result,outfile,domcmc):
 ##################################################################
 
 def makeplot(x,y,z,this_slice,this_bestval,xlabel,ylabel,zlabel,title,pngoutfile):
+    try:
         fig = plt.figure(figsize=(7.5,6))
         ax = plt.gca()
         sliceindexes=np.where(this_slice==this_bestval)
@@ -191,6 +192,22 @@ def makeplot(x,y,z,this_slice,this_bestval,xlabel,ylabel,zlabel,title,pngoutfile
         slicex=np.array(slicex)
         slicey=np.array(slicey)
         slicez=np.array(slicez)
+
+        if len(slicex) == 0 or len(slicey) == 0 or len(slicez) == 0:
+            raise ValueError("One of the input arrays is empty.")
+
+        if DEBUG:
+            from tabulate import tabulate
+            print("SLICES FOR PLOTTING - slicex:")
+            print(tabulate(pd.DataFrame(slicex), headers='keys', tablefmt='psql'))
+            print()
+            print("SLICES FOR PLOTTING - slicey:")
+            print(tabulate(pd.DataFrame(slicey), headers='keys', tablefmt='psql'))
+            print()
+            print("SLICES FOR PLOTTING - slicez:")
+            print(tabulate(pd.DataFrame(slicez), headers='keys', tablefmt='psql'))
+            print()
+
 
         if len(slicez)>3:
             # Set up a regular grid of interpolation points
@@ -233,6 +250,8 @@ def makeplot(x,y,z,this_slice,this_bestval,xlabel,ylabel,zlabel,title,pngoutfile
 
         ######################################
 
+    except:
+        print(f"[ERROR] Creating Plot {pngoutfile} failed.")
 
 ##################################################################
 ##################################################################
@@ -576,8 +595,8 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
 
         # These limits correspond to +/-1 sigma error
         if dgf>0:
-            #cutoff=0.05  # area to the right of critical value; here 5% --> 95% confidence  --> +/- 2sigma
-            cutoff=0.32  # area to the right of critical value; here 32% --> 68% confidence --> +/- 1sigma
+            cutoff=0.05  # area to the right of critical value; here 5% --> 95% confidence  --> +/- 2sigma
+            #cutoff=0.32  # area to the right of critical value; here 32% --> 68% confidence --> +/- 1sigma
             deltachi2=scipychi2.ppf(1-cutoff, dgf)
         else:
             print("DGF is zero or negative.")
