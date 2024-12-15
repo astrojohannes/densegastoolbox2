@@ -751,7 +751,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
                     bestT_mcmc_val,bestT_mcmc_upper,bestT_mcmc_lower,\
                     bestW_mcmc_val,bestW_mcmc_upper,bestW_mcmc_lower,\
                     taulist = \
-                    mcmc_corner_plot(outpngfile,labels,ndim,pixelnr=str(pixnr))
+                    mcmc_corner_plot(status_filename,outpngfile,labels,ndim,pixelnr=str(pixnr))
 
 
                 ############### LOOKUP ##################
