@@ -156,7 +156,7 @@ def read_grid_ndist(transition,usertkin,userwidth,usertau,powerlaw,type_of_model
     print("Lines")
     # limit to user lines
     userlines=[linename_obs2mdl(x) for x in transition]
-    userspecies=[linename_obs2mdl(x).replace('10','').replace('21','').replace('32','') for x in userlines]
+    userspecies=[linename_obs2mdl(x).replace('10','').replace('21','').replace('32','').replace('43','') for x in userlines]
     mdlcols=['n_mean','n_mean_mass','tkin','width','fdense_thresh','fdense_pl','pl']
     keepcols=userlines+mdlcols
 
@@ -193,7 +193,7 @@ def read_grid_ndist(transition,usertkin,userwidth,usertau,powerlaw,type_of_model
         taumask={}
         for trans_tau in usertau:
             this_trans,this_tau=trans_tau.split('_')
-            this_species=linename_obs2mdl(this_trans).replace('10','').replace('21','').replace('32','')
+            this_species=linename_obs2mdl(this_trans).replace('10','').replace('21','').replace('32','').replace('43','')
             taumask[this_trans]=(grid['tau_'+this_species] == float(this_tau))
 
         mask_tau=taumask[list(taumask.keys())[0]]
@@ -226,6 +226,7 @@ def linename_obs2mdl(line:str):
     if ll=='co10': ll='12co10'
     elif ll=='co21': ll='12co21'
     elif ll=='co32': ll='12co32'
+    elif ll=='co43': ll='12co43'
 
     return str(ll)
 
@@ -238,6 +239,7 @@ def linename_mdl2obs(line:str):
     if ll=='12CO10': ll='CO10'
     elif ll=='12CO21': ll='CO21'
     elif ll=='12CO32': ll='CO32'
+    elif ll=='12CO43': ll='CO43'
 
     return str(ll)
 

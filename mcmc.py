@@ -2,9 +2,11 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
-from PTMCMCSampler import PTMCMCSampler
+#from PTMCMCSampler import PTMCMCSampler
 from scipy.spatial import distance
 from scipy.interpolate import LinearNDInterpolator, griddata
+import emcee
+from multiprocessing import Pool
 
 ##################################################################
 
@@ -29,7 +31,42 @@ def find_nearest(models,values,cnt=1):
 
 ##################################################################
 
-def getpos(labels,nwalkers,ndim,conf):
+def getpos(labels,nwalkers,ndim,conf,sampler,nreps, nsims_burnin):
+    ##### Define parameter grid for random selection of initial points for walker #######
+    ##### PARAMETER GRID #####
+    grid_n=1.9+np.arange(32)*0.1
+
+    grid_T=conf.valid_T[1:]  # first value is 0
+    grid_width=conf.valid_W[1:]  # first value is 0
+    grid_tau_thin=[0.1,0.2,0.3]         # cross-check with calc_linerats.py
+    grid_tau_middle=[0.8,1.1,1.5]           # cross-check with calc_linerats.py
+    grid_tau_thick=[5.0,6.5,8.0]        # cross-check with calc_linerats.py
+
+    grid_tau={}
+    for ii,lbl in enumerate(labels[3:]):
+        if lbl=='tau_12co': grid_tau[ii]=grid_tau_thick
+        elif lbl=='tau_13co' or lbl=='tau_c18o' or lbl=='tau_c17o': grid_tau[ii]=grid_tau_thin
+        else: grid_tau[ii]=grid_tau_middle
+
+    if ndim==3:     # case tau is fixed
+        pos = [np.array([ \
+           np.random.choice(grid_n,size=1)[0],\
+           np.random.choice(grid_T,size=1)[0],\
+           np.random.choice(grid_width,size=1)[0]],\
+           dtype=np.float64) for i in range(1)]
+    else:   # case tau is free
+		# messy solution for creating grid
+        pos = np.empty((nwalkers, ndim), dtype = np.float64)
+        pos[:,0] = np.random.choice(grid_n, size=nwalkers)
+        pos[:,1] = np.random.choice(grid_T, size=nwalkers)
+        pos[:,2] = np.random.choice(grid_width)
+        for ii,lbl in enumerate(labels[3:]):
+            pos[:,ii+3] = np.random.choice(grid_tau[ii], size=nwalkers)
+    return pos
+
+##################################################################
+
+def getpos_old(labels,nwalkers,ndim,conf):
     ##### Define parameter grid for random selection of initial points for walker #######
     ##### PARAMETER GRID #####
     grid_n=1.9+np.arange(32)*0.1
@@ -141,7 +178,38 @@ def getloglike(theta, grid_theta, grid_loglike, interp):
 
 #######################################################################
 
-def mymcmc(grid_theta, grid_loglike, ndim, nwalkers, interp, nsteps, labels, conf, pixelnr='1'):
+def mymcmc(grid_theta, grid_loglike, ndim, nwalkers, interp, nsims, labels, conf, nreps, nsims_burnin, backend, n_cpus=1, pixelnr='1'):
+    
+    with Pool(processes=n_cpus) as pool:
+        sampler = emcee.EnsembleSampler(nwalkers, ndim, getloglike, args = ([grid_theta, grid_loglike, interp]), pool = pool, backend = backend)                                                                
+
+        pos=getpos(labels,nwalkers,ndim, conf, sampler, nsims, nsims_burnin)
+
+        for ii in range(nreps):
+            # call positions and associated probabilities from sampler
+            pos, prob, state = sampler.run_mcmc(pos, nsims_burnin, progress = True)
+            # get highest prob position for walkers stuck in low probability space
+            max_prob_index = np.argmax(prob)
+            max_prob_pos = pos[max_prob_index,:]
+        
+            # mask for stuck walkers
+            mask = prob == -np.inf        
+
+            # initialize new walker positions in small ball around max probability
+            # done individually due to different scales in parameters
+            pos[mask,0] = max_prob_pos[0] + 1e3*np.random.randn(np.sum(mask))
+            pos[mask,1] = max_prob_pos[1] + 1.5*np.random.randn(np.sum(mask))
+            pos[mask,2] = max_prob_pos[2] + 1e-2*np.random.randn(np.sum(mask))
+            # reset sampler
+            sampler.reset()
+
+        # do full sampling
+        sampler.run_mcmc(pos, nsims, progress=True, store=True)
+
+#######################################################################
+
+
+def mymcmc_old(grid_theta, grid_loglike, ndim, nwalkers, interp, nsteps, labels, conf, pixelnr='1'):
 
     p0=getpos(labels,nwalkers,ndim, conf)
 

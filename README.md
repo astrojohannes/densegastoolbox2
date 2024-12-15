@@ -24,6 +24,11 @@ fit/derived parameters.
 
 # VERSION HISTORY
 
+- Dec 15, 2024 | Version 2.1
+   * Updated model grids, also including (4-3) transitions
+
+   * MCMC bugfix by Soren to avoid walkers getting stuck in low-prob. regions
+
 - May 24, 2024 | Version 2.0 (first v2 release)
 
    * Updated model grid (emmisivities) stored in 2 pickle files (32GB each)

@@ -26,6 +26,7 @@ import mcmc
 from datetime import datetime
 import warnings
 from mcmc_corner_plot2 import mcmc_corner_plot
+import emcee
 
 mpl.use("TkAgg")
 
@@ -260,7 +261,7 @@ def makeplot(x,y,z,this_slice,this_bestval,xlabel,ylabel,zlabel,title,pngoutfile
 ##################################################################
 ##################################################################
 
-def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,domcmc,nsteps,type_of_models,usecsv,n_cpus):
+def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,domcmc,nsteps,type_of_models,usecsv,n_cpus=1):
 
     interp=False    # interpolate loglike on model grid (for mcmc sampler)
 
@@ -385,7 +386,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
 
         # Calculate reduce_dgf for this case
         ####################################################
-        species=np.unique(np.array([t.replace('10','').replace('21','').replace('32','') for t in obstrans]))
+        species=np.unique(np.array([t.replace('10','').replace('21','').replace('32','').replace('43','') for t in obstrans]))
         reduce_dgf=len(species)
 
     else:
@@ -424,18 +425,21 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
     have_co10=False
     have_co21=False
     have_co32=False
+    have_co43=False
 
     # loop through observed lines/transitions
     for t in obstrans:
         if t=='CO10': have_co10=True
         if t=='CO21': have_co21=True
         if t=='CO32': have_co32=True
+        if t=='CO43': have_co43=True
 
     if have_co10: normtrans='CO10'; uc_normtrans='UC_CO10'
     elif have_co21: normtrans='CO21'; uc_normtrans='UC_CO21'
     elif have_co32: normtrans='CO32'; uc_normtrans='UC_CO32'
+    elif have_co43: normtrans='CO43'; uc_normtrans='UC_CO43'
     else:
-        print("[ERROR] No CO line found in input data file. Check column headers for 'CO10', 'CO21' or 'CO32'. Exiting.")
+        print("[ERROR] No CO line found in input data file. Check column headers for 'CO10', 'CO21', 'CO32' or 'CO43'. Exiting.")
         exit()
 
 
@@ -721,10 +725,25 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
                     print()
                     """
 
+                # parameters for initial "burn-in" sampling to avoid stuck walkers
+                nreps = 3
+                nsims_burnin = 200
+                                
+                # set up backend (from dgt v1.7)
+                status_filename = './results2/'+obsdata_file[:-4]+'_mcmc_'+str(p+1)+'.h5'
+                backend = emcee.backends.HDFBackend(status_filename)
+                # reset if already exists
+                backend.reset(nwalkers, ndim)
+                # perform sampling
+                mcmc.mymcmc(grid_theta, grid_loglike, ndim, nwalkers, interp, nsteps, labels, conf, nreps, nsims_burnin, backend, n_cpus=n_cpus, pixelnr=str(pixnr))
+
+                """
                 if not Path('./chains'+str(pixnr)).is_dir():
                     mcmc.mymcmc(grid_theta, grid_loglike, ndim, nwalkers, interp, nsteps, labels, conf, pixelnr=str(pixnr))
                 else:
                     print('[INFO] Re-using previously generated chain for pixel id'+str(pixnr))
+                """
+
 
                 ########## MAKE CORNER PLOT #########
                 outpngfile="./results2/"+obsdata_file[:-4]+"_mcmc_"+str(pixnr)+".png"

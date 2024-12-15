@@ -44,18 +44,20 @@ if __name__ == "__main__":
 
     powerlaw=True                           # logNorm or logNorm+PL density distribution
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
-    T=0                                     # gas temperature; use T=0 to leave as free parameter
+    T=10                                     # gas temperature; use T=0 to leave as free parameter
                                             # must be one of: 10,15,20,25,30
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
-    W=0                                     # with of density distribution in dex; use W=0 to leave as free parameter
+    W=0.2                                     # with of density distribution in dex; use W=0 to leave as free parameter
                                             # must be one of: 0.2,0.4,0.6,0.8
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
                                             # Models will be downloaded upon usage (note large file size)
                                             # see README_models.md
                                             #
-    type_of_models='co'                     # which models to use (one of: std, co, coarse)
-                                            # std (2 x 35GB)
-                                            # co (2x 10GB)
+    type_of_models='thick'                  # which models to use (one of: std, std43, co, coarse)
+                                            # std (up to 3-2): 2 x 35GB
+                                            # std43: currently not available
+                                            # thick (up to 4-3): 2x 10GB
+                                            # co (up to 3-2): 2x 10GB
                                             # coarse: currently not available
                                             #
     models_from_csv=False                   # in case of problems with unpickling the models, a csv
@@ -70,15 +72,16 @@ if __name__ == "__main__":
                                             #      [0.8,1.1,1.5] for HCN and HCOP
                                             #      [5.0,6.5,8.0] for 12COXY
                                             #
+                                            # std43: [0.8,1.1,1.5] for HCN, HNC and HCOP
+                                            #        [5.0,6.5,8.0] for 12COXY
+                                            #
                                             # co: [0.1,0.2,0.3] for 13COXY and C18OXY
                                             #     [5.0,6.5,8.0] for 12COXY
-                                            #
-                                            # coarse: 
                                             #
                                             # or set tau='tau_fiducial' to use EMPIRE-based fixed optical depths
                                             # this reproduces results from previous old DGT v1.X
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    snr_line='13CO10'                       # only use data above SNR cut in given line, should be faintest line
+    snr_line='CO10'                       # only use data above SNR cut in given line, should be faintest line
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
     snr_lim=10.0                            # this is the corresponding SNR cut
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
@@ -86,7 +89,7 @@ if __name__ == "__main__":
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     domcmc=True                             # use MCMC for parameter estimation; this is recommended, but may take very long
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
-    nsims=20000                              # number of MCMC simulations to perform (should be >1000, better even more)
+    nsims=2000                              # number of MCMC simulations to perform (should be >1000, better even more)
     n_cpus = 16                             # Upper limit for number of cpus used for MCMC 
     #######################################################################################################
 

@@ -2,6 +2,8 @@
 ---------------------------- Standard models (32GB) ---------------------------------
 -------------------------- min. RAM requirement: 64GB -------------------------------
 -------------------------------------------------------------------------------------
+shortname: std
+
 The v2 standard models contain molecular line emissivities
 for the following transitions and parameter space:
 
@@ -20,7 +22,6 @@ Tau=[0.1,0.2,0.3,
      0.8,1.1,1.5,
      5.0,6.5,8.0]
 
-
 --> combinations of n,T,W: 33*5*4
 --> combinations of Lines/Tau: 9^5
 
@@ -31,9 +32,56 @@ valid_lines=['CO10','CO21','CO32',\
         'C18O10','C18O21','C18O32']
 
 -------------------------------------------------------------------------------------
------------------------------- CO models (9.2GB) ------------------------------------
+------------------ Standard models incl. 4-3 transitions (??GB) ---------------------
+-------------------------- min. RAM requirement: ??GB -------------------------------
+-------------------------------------------------------------------------------------
+shortname: std43
+
+***********************
+* NOT YET IMPLEMENTED *
+***********************
+
+The v2 standard models incl. (4-3) transitions contain molecular line emissivities
+for the following transitions and parameter space:
+
+n, T, W, Tau...same as standard model
+
+--> combinations of n,T,W: 33*5*4
+--> combinations of Lines/Tau: 9^5
+
+valid_lines=['CO10','CO21','CO32','CO43',\
+        'HCN10','HCN21','HCN32','HCN43',\
+        'HCOP10','HCOP21','HCOP32','HCOP43',\
+        '13CO10','13CO21','13CO32','13CO43',\
+        'C18O10','C18O21','C18O32','C18O43']
+
+-------------------------------------------------------------------------------------
+-------------------- Thick models incl. 4-3 transitions (10GB) ----------------------
 -------------------------- min. RAM requirement: 20GB -------------------------------
 -------------------------------------------------------------------------------------
+shortname: thick
+
+The v2 thick models contain molecular line emissivities
+for the following transitions and parameter space:
+
+n, T, W...same as standard model
+Tau=[0.8,1.1,1.5,
+     5.0,6.5,8.0]
+
+--> combinations of n,T,W: 33*5*4
+--> combinations of Lines/Tau: 6^4
+
+valid_lines=['CO10','CO21','CO32','CO43',\
+        'HCN10','HCN21','HCN32','HCN43',\
+        'HCOP10','HCOP21','HCOP32','HCOP43',\
+        'HNC10','HNC21','HNC32','HNC43']
+
+-------------------------------------------------------------------------------------
+------------------------------ CO models (9.2GB) ------------------------------------
+-------------------------- min. RAM requirement: 32GB -------------------------------
+-------------------------------------------------------------------------------------
+shortname: co
+
 The v2 CO models contain molecular line emissivities
 for the following transitions and parameter space:
 
@@ -50,9 +98,15 @@ valid_lines=['CO10','CO21','CO32',\
         'C17O10','C17O21','C17O32']
 
 -------------------------------------------------------------------------------------
---------------------------- Coarse models (100GB) -----------------------------------
------------------------- min. RAM requirement: 256GB --------------------------------
+---------------------------- Coarse models (22GB) -----------------------------------
+------------------------- min. RAM requirement: 48GB --------------------------------
 -------------------------------------------------------------------------------------
+shortname:coarse
+
+***********************
+* NOT YET IMPLEMENTED *
+***********************
+
 The v2 coarse models contain molecular line emissivities
 for the following transitions and parameter space:
 
