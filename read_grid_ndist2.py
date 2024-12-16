@@ -118,6 +118,8 @@ def read_grid_ndist(transition,usertkin,userwidth,usertau,powerlaw,type_of_model
         model_size_gb = 40
     elif type_of_models=="co":
         model_size_gb = 9.2
+    elif type_of_models=="thick":
+        model_size_gb = 12
     else:
         model_size_gb = 33
 
