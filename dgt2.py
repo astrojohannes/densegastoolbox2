@@ -101,7 +101,8 @@ def read_obs(filename,valid_lines):
         line=alllines[0].replace('#','').replace('# ','').replace('#\t','')
 
         # read keys
-        keys=re.sub('\s+',' ',line).strip().split(' ')
+        #keys=re.sub('\s+',' ',line).strip().split(' ')
+        keys = re.sub(r'\s+', ' ', line).strip().split(' ')
 
     f.close()
 
@@ -110,7 +111,9 @@ def read_obs(filename,valid_lines):
         alllines=f.readlines()
         lines=alllines[1:]
         for i in range(len(keys)):
-            get_col = lambda col: (re.sub('\s+',' ',line).strip().split(' ')[i] for line in lines if line)
+            #get_col = lambda col: (re.sub('\s+',' ',line).strip().split(' ')[i] for line in lines if line)
+            get_col = lambda col: (re.sub(r'\s+', ' ', line).strip().split(' ')[i] for line in lines if line)
+
             val=np.array([float(a) for a in get_col(i)],dtype=np.float64)
             obsdata[keys[i]]=val
             keys[i] + ": "+str(val) 
@@ -174,7 +177,8 @@ def write_result(result,outfile,domcmc):
             header="ID\tRA\tDEC\tcnt\tdgf\tchi2\tlog_n\te_n1\te_n2\tT\te_T1\te_T2\twidth\te_width1\te_width2\ttau_lines\tXCO_19\tlines_obs")
 
     # clean up
-    replacecmd="sed -e\"s/', '/|/g;s/'//g;s/\[//g;s/\]//g\""
+    #replacecmd="sed -e\"s/', '/|/g;s/'//g;s/\[//g;s/\]//g\""
+    replacecmd = "sed -e\"s/', '/|/g;s/'//g;s/\\[//g;s/\\]//g\""
     os.system("cat "+tmpoutfile + "| "+ replacecmd + " > " + outfile)
     os.system("rm -rf "+tmpoutfile)
 
@@ -733,16 +737,13 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
                 status_filename = './results2/'+obsdata_file[:-4]+'_mcmc_'+str(p+1)+'.h5'
                 backend = emcee.backends.HDFBackend(status_filename)
                 # reset if already exists
-                backend.reset(nwalkers, ndim)
-                # perform sampling
-                mcmc.mymcmc(grid_theta, grid_loglike, ndim, nwalkers, interp, nsteps, labels, conf, nreps, nsims_burnin, backend, n_cpus=n_cpus, pixelnr=str(pixnr))
+                #backend.reset(nwalkers, ndim)
 
-                """
-                if not Path('./chains'+str(pixnr)).is_dir():
-                    mcmc.mymcmc(grid_theta, grid_loglike, ndim, nwalkers, interp, nsteps, labels, conf, pixelnr=str(pixnr))
+                if not os.path.exists(status_filename):
+                   # perform sampling
+                    mcmc.mymcmc(grid_theta, grid_loglike, ndim, nwalkers, interp, nsteps, labels, conf, nreps, nsims_burnin, backend, n_cpus=n_cpus, pixelnr=str(pixnr))
                 else:
                     print('[INFO] Re-using previously generated chain for pixel id'+str(pixnr))
-                """
 
 
                 ########## MAKE CORNER PLOT #########
@@ -838,6 +839,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
             zoom_chi2=chi2[idx].compressed()
             zoom_width=width[idx].compressed()
 
+
             ########################## PLOT 1 #############################
 
             # combine 4 plots to a single file
@@ -845,21 +847,22 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
             # Chi2 vs n plot
 
             ax[0,0].scatter(chi2, np.log10(n),c=width, cmap='Accent',marker=',',s=4,vmin=width.min(),vmax=width.max())
-            ax[0,0].set_ylabel('$log\ n$') 
+            ax[0, 0].set_ylabel('$\\log\\ n$')
 
             pl1=ax[0,1].scatter(zoom_chi2, np.log10(zoom_n),c=zoom_width, cmap='Accent',marker=',',s=9,vmin=width.min(),vmax=width.max())
-            fig.colorbar(pl1,ax=ax[0,1],label='$\mathsf{width}$')
+            #fig.colorbar(pl1,ax=ax[0,1],label='$\mathsf{width}$')
+            fig.colorbar(pl1, ax=ax[0, 1], label='$\\mathsf{width}$')
 
             # Chi2 vs T plot
             ax[1,0].scatter(chi2, np.log10(T),c=width, cmap='Accent',marker=',',s=4,vmin=width.min(),vmax=width.max())
-            ax[1,0].set_xlabel('$\chi^2$')
-            ax[1,0].set_ylabel('$log\ T$') 
+            ax[1, 0].set_xlabel('$\\chi^2$')
+            ax[1, 0].set_ylabel('$\\log\\ T$')
 
             # Chi2 vs T plot zoom-in
             zoom_T=T[chi2<bestchi2+deltachi2].compressed()
             pl2=ax[1,1].scatter(zoom_chi2, np.log10(zoom_T),c=zoom_width, cmap='Accent',marker=',',s=9,vmin=width.min(),vmax=width.max())
-            ax[1,1].set_xlabel('$\chi^2$')
-            fig.colorbar(pl2,ax=ax[1,1],label='$\mathsf{width}$')
+            ax[1, 1].set_xlabel('$\\chi^2$')
+            fig.colorbar(pl2, ax=ax[1, 1], label='$\\mathsf{width}$')
  
             # plot
             fig.subplots_adjust(left=0.06, bottom=0.06, right=1, top=0.96, wspace=0.04, hspace=0.04)
@@ -880,9 +883,9 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
                   z=np.log10(zoom_chi2)
                   this_slice=zoom_width
                   this_bestval=bestwidth
-                  xlabel='$log\ n\ [cm^{-3}]$'
-                  ylabel='$log\ T\ [K]$'
-                  zlabel='$\mathsf{log\ \chi^2}$'
+                  xlabel = '$\\log\\ n\\ [cm^{-3}]$'
+                  ylabel = '$\\log\\ T\\ [K]$'
+                  zlabel = '$\\log\\ \\chi^2$'
 
                   title='Pixel: '+str(pixnr)+ ' | SNR('+snr_line+')='+str(SNR)
                   pngoutfile='results2/'+obsdata_file[:-4]+"_"+str(pixnr)+'_nT.png'
@@ -896,9 +899,9 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
                   z=np.log10(zoom_chi2)
                   this_slice=zoom_T
                   this_bestval=bestT
-                  xlabel='$log\ n\ [cm^{-3}]$'
-                  ylabel='$width\ [dex]$'
-                  zlabel='$\mathsf{log\ \chi^2}$'
+                  xlabel = '$\\log\\ n\\ [cm^{-3}]$'
+                  ylabel = '$width\\ [dex]$'
+                  zlabel = '$\\log\\ \\chi^2$'
 
                   title='Pixel: '+str(pixnr)+ ' | SNR('+snr_line+')='+str(SNR)
                   pngoutfile='results2/'+obsdata_file[:-4]+"_"+str(pixnr)+'_nW.png'
@@ -912,9 +915,9 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
                   z=np.log10(zoom_chi2)
                   this_slice=zoom_width
                   this_bestval=bestwidth
-                  xlabel='$log\ n\ [cm^{-3}]$'
-                  ylabel='$log\ T\ [K]$'
-                  zlabel='$\mathsf{log\ \chi^2}$'
+                  xlabel = '$\\log\\ n\\ [cm^{-3}]$'
+                  ylabel = '$\\log\\ T\\ [K]$'
+                  zlabel = '$\\log\\ \\chi^2$'
 
                   title='Pixel: '+str(pixnr)+ ' | SNR('+snr_line+')='+str(SNR)
                   pngoutfile='results2/'+obsdata_file[:-4]+"_"+str(pixnr)+'_nT_fixedW.png'
@@ -928,9 +931,9 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
                   z=np.log10(zoom_chi2)
                   this_slice=zoom_T
                   this_bestval=bestT
-                  xlabel='$log\ n\ [cm^{-3}]$'
-                  ylabel='$width\ [dex]$'
-                  zlabel='$\mathsf{log\ \chi^2}$'
+                  xlabel = '$\\log\\ \\n\\ [cm^{-3}]$'
+                  ylabel='$width\\ [dex]$'
+                  zlabel = '$\\log\\ \\chi^2$'
 
                   title='Pixel: '+str(pixnr)+ ' | SNR('+snr_line+')='+str(SNR)
                   pngoutfile='results2/'+obsdata_file[:-4]+"_"+str(pixnr)+'_nW_fixedT.png'

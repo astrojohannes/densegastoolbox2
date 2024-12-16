@@ -8,13 +8,12 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import sys
 from scipy.optimize import minimize
+from scipy.stats import gaussian_kde
 import autocorr
 
 ############################################################
 
 def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
-
-    # adapt implementation from dgt v 1.7
 
     if len(labels)==3:  # case fixed optical depth
         print("[INFO] Optical depths are fixed")
@@ -24,9 +23,7 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
         myrange=[(1.8,5.1),(8,32),(0.1,0.9)] + [(0.0,9.0) for x in range(len(labels[3:]))]
 
 
-
     reader = emcee.backends.HDFBackend(infile)
-
     tau = reader.get_autocorr_time(tol=0) # this tau is not optical depth, but the MCMC autocorrelation time
 
     for ii in range(ndim):
@@ -38,10 +35,8 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
 
 
     if not pd.isna(np.nanmax(tau)) and not pd.isna(np.nanmin(tau)):
-        burnin = int(2 * np.nanmax(tau))
-        thin = int(0.5 * np.nanmin(tau))
-        if thin == 0:
-            thin = 1
+        burnin = int(3 * np.nanmax(tau))
+        thin = max(1, int(0.5 * np.nanmin(tau)))
 
         samples = reader.get_chain(flat=True, discard=burnin, thin=thin)
         logprob = reader.get_log_prob(flat=True, discard=burnin, thin=thin)
@@ -73,17 +68,60 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
         all_samples = samples
         #labels += ["log prob"]
 
-        # 0.16 and 0.84 percentiles correspond to +/- 1 sigma in a Gaussian
-        q=[0.16, 0.5, 0.84]
+        n_params = all_samples.shape[1]
 
+        # Initialize lists for best-fit values
+        kde_modes = []
+        kde_maxy = []
+        uncertainty_pos = []
+        uncertainty_neg = []
+
+        # lists for results to return
+        result = []
+        taulist = []
         nicelabels=[]
-        for label in labels:
-            if label[0:3]=='tau': nicelabels.append('$\\tau_{'+label[4:]+'}$')
-            else: nicelabels.append(label)
+        for i,y in enumerate(labels):
+            label = labels[i]
+            if label[0:3]=='tau':
+                nicelabels.append('$\\tau_{'+label[4:]+'}$')
+                is_tauval = True
+            else:
+                nicelabels.append(label)
+                is_tauval = False
+
+            # KDE computation
+            kde = gaussian_kde(all_samples[:, i])
+            lower_bound = np.nanmin(all_samples[:, i])
+            upper_bound = np.nanmax(all_samples[:, i])
+            kde_x = np.linspace(lower_bound, upper_bound, 1000)
+            kde_y = kde(kde_x)
+
+            # KDE parameter estimate
+            kde_mode = kde_x[np.argmax(kde_y)]
+
+            # Get 16th, 50th, and 84th percentiles to compute credible intervals more accurately
+            percentiles = np.percentile(all_samples[:, i], [16, 50, 84])
+            median = percentiles[1]
+            upper_bound_1sigma = percentiles[2] - median
+            lower_bound_1sigma = median - percentiles[0]
+            uncertainty_pos.append(percentiles[2])
+            uncertainty_neg.append(percentiles[0])
+
+            # Append best-fit values to the lists
+            kde_modes.append(kde_mode)
+            kde_maxy.append(np.max(kde_y))
+
+            if not is_tauval:
+                result.append(round(kde_mode,2))
+                result.append(round(percentiles[2],2))
+                result.append(round(percentiles[0],2))
+            else:
+                taulist.append([label,round(kde_mode,2),round(percentiles[2],2),round(percentiles[0],2)])
+
 
         figure=corner.corner(all_samples, labels=nicelabels,\
             range=myrange,\
-            quantiles=q,\
+            #quantiles=q,\
             plot_datapoints=False,\
             plot_contours=True,\
             plot_density=True,\
@@ -94,81 +132,30 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
             label_kwargs={"fontsize": 16}
         )
 
+        # Add vertical lines for the best-fit values on each histogram and plot Gaussian
+        axes = np.array(figure.axes).reshape((n_params, n_params))
+
+        for i in range(n_params):
+            ax = axes[i, i]  # Access the histograms along the diagonal
+
+            # Plot Best-Fit and uncertainties as vertical lines
+            ax.axvline(kde_modes[i], color='black', linestyle='-', label=f'best fit')
+            ax.axvline(uncertainty_pos[i], color='red', linestyle='--',label='uncertainty (+)')
+            ax.axvline(uncertainty_neg[i], color='red', linestyle='--',label='uncertainty (-)')
+
+            # Add a legend for the first plot
+            if i == 0:
+                ax.legend(loc='upper left', bbox_to_anchor=(1.05, 1), borderaxespad=0.)
+
         # save corner plot
         figure.savefig(outfile,bbox_inches='tight')
-
-        samples_n=samples[:,0]
-        samples_T=samples[:,1]
-        samples_W=samples[:,2]
-
-        """
-        plt.ion()
-        figs={}
-        for i in range(3):
-            figs[i]=plt.figure()
-            plt.clf()
-            plt.hist(samples[:, i], 100, color="k", histtype="step")
-            plt.pause(0.5)
-            plt.xlabel(r"$\theta$ "+labels[i])
-            plt.ylabel(r"$p(\theta)$ "+labels[i])
-            plt.gca().set_yticks([]);
-            plt.title("Histogram of samples")
-        """
-
-        # calculate quantile-based 1-sigma error bars
-        q=[0.16,0.5,0.84]
-        lowern_mcmc,bestn_mcmc,uppern_mcmc=np.quantile(samples_n,q)
-        lowerT_mcmc,bestT_mcmc,upperT_mcmc=np.quantile(samples_T,q)
-        lowerW_mcmc,bestW_mcmc,upperW_mcmc=np.quantile(samples_W,q)
-
-        if len(labels)>3:
-            taulist=[]
-            for ii,label in enumerate(labels[3:]):
-                """
-                if label=='tau_12co': samples_CO=samples[:,ii+3]
-                if label=='tau_13co': samples_13CO=samples[:,ii+3]
-                if label=='tau_c17o': samples_C17O=samples[:,ii+3]
-                if label=='tau_c18o': samples_C18O=samples[:,ii+3]
-                if label=='tau_hcn': samples_HCN=samples[:,ii+3]
-                if label=='tau_hnc': samples_HNC=samples[:,ii+3]
-                if label=='tau_hcop': samples_HCOP=samples[:,ii+3]
-                if label=='tau_cs': samples_CS=samples[:,ii+3]
-                """
-
-                if label[0:3]=='tau':
-                    """
-                    figs[ii+3]=plt.figure()
-                    plt.clf()
-                    plt.hist(samples[:, ii+3], 100, color="k", histtype="step")
-                    plt.pause(0.5)
-                    plt.xlabel(r"$\theta$ "+labels[ii+3])
-                    plt.ylabel(r"$p(\theta)$ "+labels[ii+3])
-                    plt.gca().set_yticks([]);
-                    plt.title("Histogram of samples")
-                    """
-
-                    lowerTau_mcmc,bestTau_mcmc,upperTau_mcmc=np.quantile(samples[:,ii+3],q)
-                    taulist.append([labels[ii+3],str(round(lowerTau_mcmc,2)),str(round(bestTau_mcmc,2)),str(round(upperTau_mcmc,2))])
-        else:
-            taulist=[np.nan,np.nan,np.nan,np.nan]
-
-        bestn_mcmc_val=str(round(bestn_mcmc,2))
-        bestn_mcmc_upper="+"+str(round(uppern_mcmc-bestn_mcmc,2))
-        bestn_mcmc_lower="-"+str(round(bestn_mcmc-lowern_mcmc,2))
-
-        bestT_mcmc_val=str(round(bestT_mcmc,2))
-        bestT_mcmc_upper="+"+str(round(upperT_mcmc-bestT_mcmc,2))
-        bestT_mcmc_lower="-"+str(round(bestT_mcmc-lowerT_mcmc,2))
-
-        bestW_mcmc_val=str(round(bestW_mcmc,2))
-        bestW_mcmc_upper="+"+str(round(upperW_mcmc-bestW_mcmc,2))
-        bestW_mcmc_lower="-"+str(round(bestW_mcmc-lowerW_mcmc,2))
 
     else:
         print("[WARN] MCMC autocorrelation time (tau) is NaN. Did not converge and corner plot cannot be created!")
         return [np.nan,np.nan,np.nan,np.nan,np.nan,np.nan,np.nan,np.nan,np.nan,[[np.nan,np.nan,np.nan,np.nan] for i in range(len(labels))]]
 
-    return [bestn_mcmc_val,bestn_mcmc_upper,bestn_mcmc_lower,bestT_mcmc_val,bestT_mcmc_upper,bestT_mcmc_lower,bestW_mcmc_val,bestW_mcmc_upper,bestW_mcmc_lower,taulist]
+    r = result + [taulist]
+    return r
 
 
 ############################################################
