@@ -339,8 +339,9 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
         have_id=True
         id_pixel=obs['ID']
 
-    # make sure the id is an integer
-    id_pixel=np.array([int(i) for i in id_pixel])
+    if have_id:
+        # make sure the id is an integer
+        id_pixel=np.array([int(i) for i in id_pixel])
 
     if not have_radec:
         print("!!!")

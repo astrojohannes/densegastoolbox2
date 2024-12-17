@@ -132,7 +132,7 @@ def getloglike(theta, grid_theta, grid_loglike, interp):
             # calculate element-wise quadratic difference and sum it up
             # to get index of nearest neighbour on grid     
             diff[i]=((intheta-grid_theta.T[i])**2.0).sum()
-            isclose[i]=np.allclose(intheta,grid_theta.T[i],rtol=10.0)
+            isclose[i]=np.allclose(intheta,grid_theta.T[i],rtol=0.5)
 
         # find nearest neighbour in multidim space
         ind=np.array(diff,dtype=np.float64).argmin()
