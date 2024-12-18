@@ -19,14 +19,17 @@ if __name__ == "__main__":
     # header, indicating the line intensities (in K km/s) via the
     # following column names:
     # 
-    # CO10      CO21        CO32
-    # HCN10     HCN21       HCN32
-    # HCOP10    HCOP21      HCOP32
-    # HNC10     HNC21       HNC32
-    # 13CO10    13CO21      13CO32
-    # C18O10    C18O21      C18O32
-    # C17O10    C17O21      C17O32
-    # CS10      CS21        CS32
+    # CO10      CO21        CO32        CO43
+    # HCN10     HCN21       HCN32       HCN43
+    # HCOP10    HCOP21      HCOP32      HCOP43
+    # HNC10     HNC21       HNC32       HNC43
+    # 13CO10    13CO21      13CO32      13CO43
+    # C18O10    C18O21      C18O32      C18O43
+    # C17O10    C17O21      C17O32      C17O43
+    # CS10      CS21        CS32        CS43
+    #
+    # NOTE: README_models provides information about the transitions available in
+    # differnet model grids the user can choose from
     #
     # The uncertainties are similar, but starting with "UC_",
     # e.g. UC_CO10 or UC_HCN21
@@ -55,8 +58,9 @@ if __name__ == "__main__":
                                             #
     type_of_models='thick'                  # which models to use (one of: std, std43, co, coarse)
                                             # std (up to 3-2): 2 x 35GB
-                                            # std43: currently not available
-                                            # thick (up to 4-3): 2x 10GB
+                                            # std43 (up to 4-3): 2 x 38GB
+                                            # std43_incl_HCN_excl_C18O (up to 4-3): 2 x 38GB
+                                            # thick (up to 4-3): 2 x 10GB
                                             # co (up to 3-2): 2x 10GB
                                             # coarse: currently not available
                                             #
@@ -68,20 +72,28 @@ if __name__ == "__main__":
                                             # or set for all lines using the following syntax:
                                             # ['CO10_6.5','CO21_6.5','CO32_6.5','13CO10_0.2',...]
                                             # to a fixed optical depth. Only the following tau values are allowed:
-                                            # std: [0.1,0.2,0.3] for 13CO and C18O
-                                            #      [0.8,1.1,1.5] for HCN and HCOP
-                                            #      [5.0,6.5,8.0] for 12COXY
                                             #
-                                            # std43: [0.8,1.1,1.5] for HCN, HNC and HCOP
-                                            #        [5.0,6.5,8.0] for 12COXY
+                                            # std: [0.1,0.2,0.3] for 13CO and C18O (up to 3-2)
+                                            #      [0.8,1.1,1.5] for HCN and HCOP (up to 3-2)
+                                            #      [5.0,6.5,8.0] for 12CO (up to 3-2)
                                             #
-                                            # co: [0.1,0.2,0.3] for 13COXY and C18OXY
-                                            #     [5.0,6.5,8.0] for 12COXY
+                                            # std43: same as std but up to (4-3)
+                                            #
+                                            # std43_incl_HCN_excl_C18O:
+                                            #       [0.1,0.2,0.3] for 13CO (up to 4-3)
+                                            #       [0.8,1.1,1.5] for HCN, HCOP and HNC (up to 4-3)
+                                            #       [5.0,6.5,8.0] for 12CO (up to 4-3)
+                                            #
+                                            # thick: [0.8,1.1,1.5] for HCN, HCOP and HNC (up to 4-3)
+                                            #        [5.0,6.5,8.0] for 12CO (up to 4-3)
+                                            #
+                                            # co: [0.1,0.2,0.3] for 13CO and C18O (up to 3-2)
+                                            #     [5.0,6.5,8.0] for 12CO (up to 3-2)
                                             #
                                             # or set tau='tau_fiducial' to use EMPIRE-based fixed optical depths
                                             # this reproduces results from previous old DGT v1.X
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    snr_line='CO10'                       # only use data above SNR cut in given line, should be faintest line
+    snr_line='CO10'                         # only use data above SNR cut in given line, should be faintest line
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
     snr_lim=10.0                            # this is the corresponding SNR cut
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 

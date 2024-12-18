@@ -32,14 +32,10 @@ valid_lines=['CO10','CO21','CO32',\
         'C18O10','C18O21','C18O32']
 
 -------------------------------------------------------------------------------------
------------------- Standard models incl. 4-3 transitions (??GB) ---------------------
--------------------------- min. RAM requirement: ??GB -------------------------------
+------------------ Standard models incl. 4-3 transitions (38GB) ---------------------
+-------------------------- min. RAM requirement: 80GB -------------------------------
 -------------------------------------------------------------------------------------
 shortname: std43
-
-***********************
-* NOT YET IMPLEMENTED *
-***********************
 
 The v2 standard models incl. (4-3) transitions contain molecular line emissivities
 for the following transitions and parameter space:
@@ -56,7 +52,28 @@ valid_lines=['CO10','CO21','CO32','CO43',\
         'C18O10','C18O21','C18O32','C18O43']
 
 -------------------------------------------------------------------------------------
--------------------- Thick models incl. 4-3 transitions (12GB) ----------------------
+------------------ Standard models incl. 4-3 transitions (38GB) ---------------------
+------------------------ including HNC, excluding C18O ------------------------------
+-------------------------- min. RAM requirement: 80GB -------------------------------
+-------------------------------------------------------------------------------------
+shortname: std43_incl_HNC_excl_C18O
+
+The v2 standard models incl. (4-3) transitions and with HNC but without C18O contain
+molecular line emissivities for the following transitions and parameter space:
+
+n, T, W, Tau...same as standard model
+
+--> combinations of n,T,W: 33*5*4
+--> combinations of Lines/Tau: 9^5
+
+valid_lines=['CO10','CO21','CO32','CO43',\
+        'HCN10','HCN21','HCN32','HCN43',\
+        'HCOP10','HCOP21','HCOP32','HCOP43',\
+        '13CO10','13CO21','13CO32','13CO43',\
+        'HNC10','HNC21','HNC32','HNC43']
+
+-------------------------------------------------------------------------------------
+-------------------- Thick models incl. 4-3 transitions (11GB) ----------------------
 -------------------------- min. RAM requirement: 24GB -------------------------------
 -------------------------------------------------------------------------------------
 shortname: thick
@@ -78,7 +95,7 @@ valid_lines=['CO10','CO21','CO32','CO43',\
 
 -------------------------------------------------------------------------------------
 ------------------------------ CO models (9.2GB) ------------------------------------
--------------------------- min. RAM requirement: 32GB -------------------------------
+-------------------------- min. RAM requirement: 24GB -------------------------------
 -------------------------------------------------------------------------------------
 shortname: co
 
