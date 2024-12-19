@@ -124,15 +124,22 @@ def getloglike(theta, grid_theta, grid_loglike, interp):
     diff=np.ones_like(grid_loglike)*1e20
     isclose=np.zeros_like(grid_loglike,dtype=bool)
 
+    # Compute the bounds for each dimension based on the transposed grid
+    min_bounds = grid_theta.T.min(axis=0)  # Minimum for each dimension
+    max_bounds = grid_theta.T.max(axis=0)  # Maximum for each dimension
+
     ###########################
     # nearest neighbor loglike
     if not interp:
 
         for i in range(len(grid_theta.T)):
-            # calculate element-wise quadratic difference and sum it up
-            # to get index of nearest neighbour on grid     
-            diff[i]=((intheta-grid_theta.T[i])**2.0).sum()
-            isclose[i]=np.allclose(intheta,grid_theta.T[i],rtol=0.5)
+            # Calculate element-wise quadratic difference and sum it up
+            diff[i] = ((intheta - grid_theta.T[i]) ** 2.0).sum()
+   
+            # Check if the current point is close and within bounds
+            within_bounds = np.all((intheta >= min_bounds) & (intheta <= max_bounds))
+            isclose[i] = np.allclose(intheta, grid_theta.T[i], rtol=0.5) and within_bounds
+            #print(intheta,min_bounds,max_bounds,within_bounds)
 
         # find nearest neighbour in multidim space
         ind=np.array(diff,dtype=np.float64).argmin()
@@ -148,31 +155,45 @@ def getloglike(theta, grid_theta, grid_loglike, interp):
     #############################
     # interpolated loglike
     else:
-        """
-        cutout_idx=find_nearest(grid_theta,intheta,1000)
-        grid_theta_cutout=np.array([x[cutout_idx] for x in grid_theta])
-        grid_loglike_cutout=np.array(grid_loglike[cutout_idx])
+        # Ensure theta is within bounds
+        if not np.all((intheta >= min_bounds) & (intheta <= max_bounds)):
+            return -np.inf  # Outside grid bounds
 
+        # Find the indices of the neighbors along each axis
+        neighbors = []
+        for dim in range(grid_theta.shape[0]):
+            axis_values = grid_theta[dim]
+            lower_idx = np.searchsorted(axis_values, intheta[dim]) - 1
+            upper_idx = lower_idx + 1
+            if lower_idx < 0 or upper_idx >= len(axis_values):
+                return -np.inf  # Out of bounds
 
-        for i in range(len(grid_theta_cutout.T)):
-            # calculate element-wise quadratic difference and sum it up
-            # to get index of nearest neighbour on grid     
-            diff[i]=((intheta-grid_theta_cutout.T[i])**2.0).sum()
-            isclose[i]=np.allclose(intheta,grid_theta_cutout.T[i],rtol=3.0)
+            neighbors.append((lower_idx, upper_idx))
 
-        if not isclose[cutout_idx[0]]:
-            this_loglike = -np.inf
+        # Perform linear interpolation
+        interpolated_loglike = 0.0
+        weights = np.ones(len(neighbors))  # Initialize weights
+        for dim, (lower_idx, upper_idx) in enumerate(neighbors):
+            lower_value = grid_theta[dim, lower_idx]
+            upper_value = grid_theta[dim, upper_idx]
+            lower_loglike = grid_loglike[lower_idx]
+            upper_loglike = grid_loglike[upper_idx]
 
-        else:
-            # griddata with method='linear' sometimes fails with a Qhull error
-            this_loglike = float(np.nan_to_num(griddata(grid_theta_cutout.T, grid_loglike_cutout, intheta, method='linear', rescale=False),nan=-np.inf))
-        """
-        
-        this_interp = LinearNDInterpolator(grid_theta.T,grid_loglike,rescale=False)
-        this_loglike = float(this_interp(intheta))
+            # Linear interpolation weight
+            weight_upper = (intheta[dim] - lower_value) / (upper_value - lower_value)
+            weight_lower = 1.0 - weight_upper
 
-        if not np.isfinite(this_loglike):
-            this_loglike = -np.inf
+            # Weighted sum
+            interpolated_loglike += (
+                weight_lower * lower_loglike + weight_upper * upper_loglike
+            )
+
+            #print(intheta,lower_value,lower_loglike,upper_value,upper_loglike)
+
+        this_loglike = interpolated_loglike
+
+        #print(this_loglike)
+        #print()
 
     return this_loglike
 

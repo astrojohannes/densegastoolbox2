@@ -35,7 +35,7 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
 
 
     if not pd.isna(np.nanmax(tau)) and not pd.isna(np.nanmin(tau)):
-        burnin = int(3 * np.nanmax(tau))
+        burnin = int(2 * np.nanmax(tau))
         thin = max(1, int(0.5 * np.nanmin(tau)))
 
         nsteps=reader.get_chain(flat=False, discard=burnin, thin=thin).shape[0]
@@ -141,7 +141,7 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
 
 
         figure=corner.corner(all_samples, labels=nicelabels,\
-            range=myrange,\
+            #range=myrange,\
             #quantiles=q,\
             plot_datapoints=False,\
             plot_contours=True,\
@@ -149,7 +149,7 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
             fill_contours=True,\
             #contour_kwargs={'cmap':'viridis','colors':None},\
             #contourf_kwargs={'cmap':'viridis','colors':None},\
-            show_titles=True, title_kwargs={"fontsize": 16},\
+            #show_titles=True, title_kwargs={"fontsize": 16},\
             label_kwargs={"fontsize": 16}
         )
 

@@ -114,14 +114,14 @@ def read_grid_ndist(transition,usertkin,userwidth,usertau,powerlaw,type_of_model
     gridfile='models_'+type_of_models+'/'+lratfile
     ensure_directory_exists('./models_'+type_of_models+'/')
 
-    if type_of_models=="coarse":
+    if type_of_models=="std43_incl_HCN_excl_C18O":
         model_size_gb = 40
     elif type_of_models=="co":
         model_size_gb = 9.2
     elif type_of_models=="thick":
         model_size_gb = 12
     else:
-        model_size_gb = 33
+        model_size_gb = 33  # std
 
     # Define URLs and local paths for the files
     urls = [

@@ -12,7 +12,7 @@ if __name__ == "__main__":
     ##############################################################
     #################### USER INPUT BELOW ########################
     ##############################################################
-    obsdata_file = 'ascii_galaxy.txt'    # table of observed intensities in Tmb [K km/s]
+    obsdata_file = 'ascii_galaxy2_interp.txt'    # table of observed intensities in Tmb [K km/s]
     
     ###################################
     # Note that the input file (obsdata_file) must have a 1-line
@@ -56,7 +56,7 @@ if __name__ == "__main__":
                                             # Models will be downloaded upon usage (note large file size)
                                             # see README_models.md
                                             #
-    type_of_models='co'                     # which models to use (one of: std, std43, std43_incl_HCN_excl_C18O, co, coarse)
+    type_of_models='std43_incl_HNC_excl_C18O'                     # which models to use (one of: std, std43, std43_incl_HNC_excl_C18O, co, coarse)
                                             # std (up to 3-2): 2 x 35GB
                                             # std43 (up to 4-3): 2 x 38GB
                                             # std43_incl_HCN_excl_C18O (up to 4-3): 2 x 38GB
@@ -102,7 +102,7 @@ if __name__ == "__main__":
     domcmc=True                             # use MCMC for parameter estimation; this is recommended, but may take very long
     use_pt=False                            # if True, the PTMCMC Sampler is used instead of emcee
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
-    nsims=2000                              # number of MCMC simulations to perform (should be >1000, better even more)
+    nsims=5000                              # number of MCMC simulations to perform (should be >1000, better even more)
     n_cpus = 12                             # Upper limit for number of cpus used for MCMC 
     #######################################################################################################
 
