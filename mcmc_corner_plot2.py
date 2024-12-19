@@ -125,10 +125,10 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
 
                 if not is_tauval:
                     result.append(round(kde_mode,2))
-                    result.append(round(percentiles[2],2))
-                    result.append(round(percentiles[0],2))
+                    result.append(round(upper_bound_1sigma,2))
+                    result.append(round(lower_bound_1sigma,2))
                 else:
-                    taulist.append([label,round(kde_mode,2),round(percentiles[2],2),round(percentiles[0],2)])
+                    taulist.append([label,round(kde_mode,2),round(upper_bound_1sigma,2),round(lower_bound_1sigma,2)])
             else:
                 kde_modes.append(np.nan)
                 kde_maxy.append(np.nan)
