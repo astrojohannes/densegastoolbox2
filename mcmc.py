@@ -55,11 +55,11 @@ def getpos(labels,nwalkers,ndim,conf,sampler,nreps, nsims_burnin):
            np.random.choice(grid_width,size=1)[0]],\
            dtype=np.float64) for i in range(1)]
     else:   # case tau is free
-		# messy solution for creating grid
+        # messy solution for creating grid
         pos = np.empty((nwalkers, ndim), dtype = np.float64)
         pos[:,0] = np.random.choice(grid_n, size=nwalkers)
         pos[:,1] = np.random.choice(grid_T, size=nwalkers)
-        pos[:,2] = np.random.choice(grid_width)
+        pos[:,2] = np.random.choice(grid_width, size=nwalkers)
         for ii,lbl in enumerate(labels[3:]):
             pos[:,ii+3] = np.random.choice(grid_tau[ii], size=nwalkers)
     return pos
@@ -193,13 +193,14 @@ def mymcmc(grid_theta, grid_loglike, ndim, nwalkers, interp, nsims, labels, conf
             max_prob_pos = pos[max_prob_index,:]
         
             # mask for stuck walkers
-            mask = prob == -np.inf        
+            mask = prob == -np.inf
+            print("mask sum: ", np.sum(mask))
 
             # initialize new walker positions in small ball around max probability
             # done individually due to different scales in parameters
-            pos[mask,0] = max_prob_pos[0] + 1e3*np.random.randn(np.sum(mask))
-            pos[mask,1] = max_prob_pos[1] + 1.5*np.random.randn(np.sum(mask))
-            pos[mask,2] = max_prob_pos[2] + 1e-2*np.random.randn(np.sum(mask))
+            if np.sum(mask) != 0:
+                pos[mask,:] = max_prob_pos + 0.3*np.random.randn(np.sum(mask))
+                pos[mask,2] = max_prob_pos[2] + 0.1*np.random.randn(np.sum(mask))
             # reset sampler
             sampler.reset()
 
