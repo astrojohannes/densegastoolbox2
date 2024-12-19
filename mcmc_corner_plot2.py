@@ -38,11 +38,15 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
         burnin = int(3 * np.nanmax(tau))
         thin = max(1, int(0.5 * np.nanmin(tau)))
 
+        nsteps=reader.get_chain(flat=False, discard=burnin, thin=thin).shape[0]
+        nwalkers=reader.get_chain(flat=False, discard=burnin, thin=thin).shape[1]
+
         samples = reader.get_chain(flat=True, discard=burnin, thin=thin)
         logprob = reader.get_log_prob(flat=True, discard=burnin, thin=thin)
 
-        nsteps = len(samples)
         print("[INFO] Number of steps is: ",nsteps)
+        print("[INFO] Number of walkers is: ",nwalkers)
+
         show_warning_nsteps = False
         for taui in tau:
             if nsteps < 50 * taui:
@@ -89,17 +93,11 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
                 nicelabels.append(label)
                 is_tauval = False
 
-            # KDE computation
-            kde = gaussian_kde(all_samples[:, i])
             lower_bound = np.nanmin(all_samples[:, i])
             upper_bound = np.nanmax(all_samples[:, i])
             kde_x = np.linspace(lower_bound, upper_bound, 1000)
-            kde_y = kde(kde_x)
 
-            # KDE parameter estimate
-            kde_mode = kde_x[np.argmax(kde_y)]
-
-            # Get 16th, 50th, and 84th percentiles to compute credible intervals more accurately
+            # Get 16th, 50th, and 84th percentiles to compute credible intervals
             percentiles = np.percentile(all_samples[:, i], [16, 50, 84])
             median = percentiles[1]
             upper_bound_1sigma = percentiles[2] - median
@@ -107,16 +105,37 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
             uncertainty_pos.append(percentiles[2])
             uncertainty_neg.append(percentiles[0])
 
-            # Append best-fit values to the lists
-            kde_modes.append(kde_mode)
-            kde_maxy.append(np.max(kde_y))
+            kde_failed = False
+            try:
+                # KDE computation
+                kde = gaussian_kde(all_samples[:, i])
+            except:
+                kde_failed = True
 
-            if not is_tauval:
-                result.append(round(kde_mode,2))
-                result.append(round(percentiles[2],2))
-                result.append(round(percentiles[0],2))
+            if not kde_failed:
+                kde_y = kde(kde_x)
+                # KDE parameter estimate
+                kde_mode = kde_x[np.argmax(kde_y)]
+
+                # Append best-fit values to the lists
+                kde_modes.append(kde_mode)
+                kde_maxy.append(np.max(kde_y))
+
+                if not is_tauval:
+                    result.append(round(kde_mode,2))
+                    result.append(round(percentiles[2],2))
+                    result.append(round(percentiles[0],2))
+                else:
+                    taulist.append([label,round(kde_mode,2),round(percentiles[2],2),round(percentiles[0],2)])
             else:
-                taulist.append([label,round(kde_mode,2),round(percentiles[2],2),round(percentiles[0],2)])
+                kde_modes.append(np.nan)
+                kde_maxy.append(np.nan)
+                if not is_tauval:
+                    result.append(np.nan)
+                    result.append(np.nan)
+                    result.append(np.nan)
+                else:
+                    taulist.append([label,np.nan,np.nan,np.nan])
 
 
         figure=corner.corner(all_samples, labels=nicelabels,\
@@ -126,8 +145,8 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
             plot_contours=True,\
             plot_density=True,\
             fill_contours=True,\
-            contour_kwargs={'cmap':'viridis','colors':None},\
-            contourf_kwargs={'cmap':'viridis','colors':None},\
+            #contour_kwargs={'cmap':'viridis','colors':None},\
+            #contourf_kwargs={'cmap':'viridis','colors':None},\
             show_titles=True, title_kwargs={"fontsize": 16},\
             label_kwargs={"fontsize": 16}
         )
@@ -136,16 +155,17 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
         axes = np.array(figure.axes).reshape((n_params, n_params))
 
         for i in range(n_params):
-            ax = axes[i, i]  # Access the histograms along the diagonal
+            if kde_modes[i] != np.nan:
+                ax = axes[i, i]  # Access the histograms along the diagonal
 
-            # Plot Best-Fit and uncertainties as vertical lines
-            ax.axvline(kde_modes[i], color='black', linestyle='-', label=f'best fit')
-            ax.axvline(uncertainty_pos[i], color='red', linestyle='--',label='uncertainty (+)')
-            ax.axvline(uncertainty_neg[i], color='red', linestyle='--',label='uncertainty (-)')
+                # Plot Best-Fit and uncertainties as vertical lines
+                ax.axvline(kde_modes[i], color='black', linestyle='-', label=f'best fit')
+                ax.axvline(uncertainty_pos[i], color='red', linestyle='--',label='uncertainty (+)')
+                ax.axvline(uncertainty_neg[i], color='red', linestyle='--',label='uncertainty (-)')
 
-            # Add a legend for the first plot
-            if i == 0:
-                ax.legend(loc='upper left', bbox_to_anchor=(1.05, 1), borderaxespad=0.)
+                # Add a legend for the first plot
+                if i == 0:
+                    ax.legend(loc='upper left', bbox_to_anchor=(1.05, 1), borderaxespad=0.)
 
         # save corner plot
         figure.savefig(outfile,bbox_inches='tight')
