@@ -141,7 +141,7 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
 
 
         figure=corner.corner(all_samples, labels=nicelabels,\
-            #range=myrange,\
+            range=myrange,\
             #quantiles=q,\
             plot_datapoints=False,\
             plot_contours=True,\
@@ -149,7 +149,7 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
             fill_contours=True,\
             #contour_kwargs={'cmap':'viridis','colors':None},\
             #contourf_kwargs={'cmap':'viridis','colors':None},\
-            #show_titles=True, title_kwargs={"fontsize": 16},\
+            show_titles=True, title_kwargs={"fontsize": 16},\
             label_kwargs={"fontsize": 16}
         )
 
