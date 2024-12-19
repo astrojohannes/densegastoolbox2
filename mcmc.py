@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
-#from PTMCMCSampler import PTMCMCSampler
+from PTMCMCSampler import PTMCMCSampler
 from scipy.spatial import distance
 from scipy.interpolate import LinearNDInterpolator, griddata
 import emcee
@@ -66,7 +66,7 @@ def getpos(labels,nwalkers,ndim,conf,sampler,nreps, nsims_burnin):
 
 ##################################################################
 
-def getpos_old(labels,nwalkers,ndim,conf):
+def getpos_ptmcmc(labels,nwalkers,ndim,conf):
     ##### Define parameter grid for random selection of initial points for walker #######
     ##### PARAMETER GRID #####
     grid_n=1.9+np.arange(32)*0.1
@@ -178,48 +178,60 @@ def getloglike(theta, grid_theta, grid_loglike, interp):
 
 #######################################################################
 
-def mymcmc(grid_theta, grid_loglike, ndim, nwalkers, interp, nsims, labels, conf, nreps, nsims_burnin, backend, n_cpus=1, pixelnr='1'):
-    
-    with Pool(processes=n_cpus) as pool:
-        sampler = emcee.EnsembleSampler(nwalkers, ndim, getloglike, args = ([grid_theta, grid_loglike, interp]), pool = pool, backend = backend)                                                                
 
-        pos=getpos(labels,nwalkers,ndim, conf, sampler, nsims, nsims_burnin)
+def mymcmc(grid_theta, grid_loglike, ndim, nwalkers, interp, nsims, labels, conf, nreps, nsims_burnin, backend, n_cpus=1, pixelnr='1', do_ptmcmc=False):
 
-        for ii in range(nreps):
-            # call positions and associated probabilities from sampler
-            pos, prob, state = sampler.run_mcmc(pos, nsims_burnin, progress = True)
-            # get highest prob position for walkers stuck in low probability space
-            max_prob_index = np.argmax(prob)
-            max_prob_pos = pos[max_prob_index,:]
-        
-            # mask for stuck walkers
-            mask = prob == -np.inf
-            print("mask sum: ", np.sum(mask))
+    if do_ptmcmc:
 
-            # initialize new walker positions in small ball around max probability
-            # done individually due to different scales in parameters
-            if np.sum(mask) != 0:
-                pos[mask,:] = max_prob_pos + 0.3*np.random.randn(np.sum(mask))
-                pos[mask,2] = max_prob_pos[2] + 0.1*np.random.randn(np.sum(mask))
-            # reset sampler
-            sampler.reset()
+	    p0=getpos_ptmcmc(labels,nwalkers,ndim, conf)
 
-        # do full sampling
-        sampler.run_mcmc(pos, nsims, progress=True, store=True)
+	    # variance defines step_size
+	    step_size = 0.1
+	    cov = np.eye(ndim) * step_size**2
+
+	    sampler = PTMCMCSampler.PTSampler(ndim, getloglike, getprior, cov=np.copy(cov), loglargs=([grid_theta,grid_loglike,interp]), logpargs=([grid_theta,ndim]), outDir="./chains"+pixelnr)
+	    sampler.sample(p0, nsteps, burn=int(nsteps/5), thin=1, SCAMweight=10, AMweight=10, DEweight=10, NUTSweight=10, HMCweight=20, MALAweight=10, HMCsteps=50, HMCstepsize=0.08)
+
+	    return
+
+    else:
+        with Pool(processes=n_cpus) as pool:
+
+            moves = [(emcee.moves.DEMove(), 0.8), (emcee.moves.DESnookerMove(), 0.2)]
+            sampler = emcee.EnsembleSampler(
+                nwalkers, ndim, getloglike,
+                args=([grid_theta, grid_loglike, interp]),
+                moves=moves, pool=pool, backend=backend
+            )
+
+            pos = getpos(labels, nwalkers, ndim, conf, sampler, nsims, nsims_burnin)
+
+            for ii in range(nreps):
+                # Call positions and associated probabilities from sampler
+                pos, prob, state = sampler.run_mcmc(pos, nsims_burnin, progress=True)
+
+                # Get highest prob position for walkers stuck in low probability space
+                max_prob_index = np.argmax(prob)
+                max_prob_pos = pos[max_prob_index, :]
+
+                # Mask for stuck walkers
+                mask = prob == -np.inf
+                print("mask sum: ", np.sum(mask))
+
+                # Initialize new walker positions in small ball around max probability
+                if np.sum(mask) != 0:
+                    pos[mask, :] = max_prob_pos + 0.3 * np.random.randn(np.sum(mask), ndim)
+                    pos[mask, 2] = max_prob_pos[2] + 0.1 * np.random.randn(np.sum(mask))
+
+                # Reset sampler
+                sampler.reset()
+
+            # Do full sampling
+            sampler.run_mcmc(pos, nsims, progress=True, store=True)
+
+    return sampler
+
 
 #######################################################################
 
-
-def mymcmc_old(grid_theta, grid_loglike, ndim, nwalkers, interp, nsteps, labels, conf, pixelnr='1'):
-
-    p0=getpos(labels,nwalkers,ndim, conf)
-
-    # variance defines step_size
-    step_size = 0.1
-    cov = np.eye(ndim) * step_size**2
-
-    sampler = PTMCMCSampler.PTSampler(ndim, getloglike, getprior, cov=np.copy(cov), loglargs=([grid_theta,grid_loglike,interp]), logpargs=([grid_theta,ndim]), outDir="./chains"+pixelnr)
-    sampler.sample(p0, nsteps, burn=int(nsteps/5), thin=1, SCAMweight=10, AMweight=10, DEweight=10, NUTSweight=10, HMCweight=20, MALAweight=10, HMCsteps=50, HMCstepsize=0.08)
-
-    return
 

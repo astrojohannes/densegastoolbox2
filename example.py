@@ -56,7 +56,7 @@ if __name__ == "__main__":
                                             # Models will be downloaded upon usage (note large file size)
                                             # see README_models.md
                                             #
-    type_of_models='thick'                  # which models to use (one of: std, std43, co, coarse)
+    type_of_models='co'                     # which models to use (one of: std, std43, std43_incl_HCN_excl_C18O, co, coarse)
                                             # std (up to 3-2): 2 x 35GB
                                             # std43 (up to 4-3): 2 x 38GB
                                             # std43_incl_HCN_excl_C18O (up to 4-3): 2 x 38GB
@@ -95,18 +95,19 @@ if __name__ == "__main__":
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     snr_line='CO10'                         # only use data above SNR cut in given line, should be faintest line
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
-    snr_lim=10.0                            # this is the corresponding SNR cut
+    snr_lim=0                               # this is the corresponding SNR cut
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
     plotting=True                           # create plots
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     domcmc=True                             # use MCMC for parameter estimation; this is recommended, but may take very long
+    use_pt=False                            # if True, the PTMCMC Sampler is used instead of emcee
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
     nsims=2000                              # number of MCMC simulations to perform (should be >1000, better even more)
-    n_cpus = 16                             # Upper limit for number of cpus used for MCMC 
+    n_cpus = 12                             # Upper limit for number of cpus used for MCMC 
     #######################################################################################################
 
     # call Dense GasTool box
-    dgt(obsdata_file,powerlaw,T,W,tau,snr_line,snr_lim,plotting,domcmc,nsims,type_of_models,models_from_csv,n_cpus)
+    dgt(obsdata_file,powerlaw,T,W,tau,snr_line,snr_lim,plotting,domcmc,use_pt,nsims,type_of_models,models_from_csv,n_cpus)
 
     # exit
     exit(0)

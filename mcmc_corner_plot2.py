@@ -182,7 +182,7 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
 
 ############################################################
 
-def mcmc_corner_plot_old(outfile,labels,ndim,pixelnr=1):
+def mcmc_corner_plot_ptmcmc(outfile,labels,ndim,pixelnr=1):
 
     if len(labels)==3:  # case fixed optical depth
         print("[INFO] Optical depths are fixed")

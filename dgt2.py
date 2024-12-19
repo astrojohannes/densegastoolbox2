@@ -25,7 +25,7 @@ from read_grid_ndist2 import read_grid_ndist,linename_obs2mdl,linename_mdl2obs
 import mcmc
 from datetime import datetime
 import warnings
-from mcmc_corner_plot2 import mcmc_corner_plot
+from mcmc_corner_plot2 import mcmc_corner_plot, mcmc_corner_plot_ptmcmc
 import emcee
 
 mpl.use("TkAgg")
@@ -265,7 +265,7 @@ def makeplot(x,y,z,this_slice,this_bestval,xlabel,ylabel,zlabel,title,pngoutfile
 ##################################################################
 ##################################################################
 
-def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,domcmc,nsteps,type_of_models,usecsv,n_cpus=1):
+def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,domcmc,use_pt,nsteps,type_of_models,usecsv,n_cpus=1):
 
     interp=False    # interpolate loglike on model grid (for mcmc sampler)
 
@@ -742,18 +742,27 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
 
                 if not os.path.exists(status_filename):
                    # perform sampling
-                    mcmc.mymcmc(grid_theta, grid_loglike, ndim, nwalkers, interp, nsteps, labels, conf, nreps, nsims_burnin, backend, n_cpus=n_cpus, pixelnr=str(pixnr))
+                    mcmc.mymcmc(grid_theta, grid_loglike, ndim, nwalkers, interp, nsteps, labels, conf, nreps, nsims_burnin, backend, n_cpus=n_cpus, pixelnr=str(pixnr),do_ptmcmc=use_pt)
                 else:
                     print('[INFO] Re-using previously generated chain for pixel id'+str(pixnr))
 
 
                 ########## MAKE CORNER PLOT #########
-                outpngfile="./results2/"+obsdata_file[:-4]+"_mcmc_"+str(pixnr)+".png"
-                bestn_mcmc_val,bestn_mcmc_upper,bestn_mcmc_lower,\
-                    bestT_mcmc_val,bestT_mcmc_upper,bestT_mcmc_lower,\
-                    bestW_mcmc_val,bestW_mcmc_upper,bestW_mcmc_lower,\
-                    taulist = \
-                    mcmc_corner_plot(status_filename,outpngfile,labels,ndim,pixelnr=str(pixnr))
+                if not use_pt:
+                    outpngfile="./results2/"+obsdata_file[:-4]+"_mcmc_"+str(pixnr)+".png"
+                    bestn_mcmc_val,bestn_mcmc_upper,bestn_mcmc_lower,\
+                        bestT_mcmc_val,bestT_mcmc_upper,bestT_mcmc_lower,\
+                        bestW_mcmc_val,bestW_mcmc_upper,bestW_mcmc_lower,\
+                        taulist = \
+                        mcmc_corner_plot(status_filename,outpngfile,labels,ndim,pixelnr=str(pixnr))
+                else:
+                    outpngfile="./results2/"+obsdata_file[:-4]+"_mcmc_"+str(pixnr)+".png"
+                    bestn_mcmc_val,bestn_mcmc_upper,bestn_mcmc_lower,\
+                        bestT_mcmc_val,bestT_mcmc_upper,bestT_mcmc_lower,\
+                        bestW_mcmc_val,bestW_mcmc_upper,bestW_mcmc_lower,\
+                        taulist = \
+                        mcmc_corner_plot_ptmcmc(status_filename,outpngfile,labels,ndim,pixelnr=str(pixnr))
+    
 
 
                 ############### LOOKUP ##################
