@@ -110,7 +110,9 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
                 # KDE computation
                 kde = gaussian_kde(all_samples[:, i])
             except:
-                kde_failed = True
+                # Add little noise to to work-around uniform data issue
+                epsilon = 1e-6  # Small noise level
+                all_samples[:, i] = all_samples[:, i] + np.random.normal(0, epsilon, size=all_samples[:, i].shape)
 
             if not kde_failed:
                 kde_y = kde(kde_x)
