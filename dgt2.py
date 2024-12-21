@@ -267,7 +267,7 @@ def makeplot(x,y,z,this_slice,this_bestval,xlabel,ylabel,zlabel,title,pngoutfile
 
 def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,domcmc,use_pt,nsteps,type_of_models,usecsv,n_cpus=1):
 
-    interp=False    # interpolate loglike on model grid (for mcmc sampler)
+    interp=True    # interpolate loglike on model grid (for mcmc sampler)
 
     # import dgt_config.py as conf using importlib
     dgt_config_file='./models_'+type_of_models+'/dgt_config.py'
@@ -358,6 +358,9 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
             ct_l+=1
             obstrans.append(key)
 
+    # labels
+    labels = ['n','T','width']
+
     # Validity check of Tau
     ct_t=0
     reduce_dgf=0
@@ -380,6 +383,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
                 if this_trans in obstrans:
                     ct_t+=1
                     mytau.append(trans_tau)
+                    labels.append('tau_'+this_trans)
             else:
                 tau_error(valid_lines,valid_Tau)
 
@@ -461,8 +465,6 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
         print("MODELS ORIG:")
         print(tabulate(pd.DataFrame(mdl), headers='keys', tablefmt='psql'))
         print()
-
-
 
 
     #############################################################################
@@ -582,7 +584,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
         chi2=ma.array(chi2,mask=m)
 
         # n,T
-        grid_n=mdl['n_mean']
+        grid_n=mdl['n_mean_mass']
         n=ma.array(grid_n,mask=m)
 
         grid_T=mdl['tkin']
@@ -647,16 +649,17 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
 
                 tauarr=[]
                 tauval=[]
+
                 for ii,lbl in enumerate(labels[3:]):
                     this_species=lbl.split('_')[1]
                     bestTau_val=bestTau.split(';')[ii]
                     tauarr.append(mdl['tau_'+this_species])
                     tauval.append(float(bestTau_val))
 
-                ICO_mdl_index_nTW = find_nearest( [ mdl['n_mean'], mdl['tkin'], mdl['width'] ]+tauarr , [ float(bestn), float(bestT) , float(bestwidth) ]+tauval )
+                ICO_mdl_index_nTW = find_nearest( [ mdl['n_mean_mass'], mdl['tkin'], mdl['width'] ]+tauarr , [ float(bestn), float(bestT) , float(bestwidth) ]+tauval )
 
             else:
-                ICO_mdl_index_nTW = find_nearest( [ mdl['n_mean'], mdl['tkin'], mdl['width'] ] , [ float(bestn), float(bestT) , float(bestwidth) ] )
+                ICO_mdl_index_nTW = find_nearest( [ mdl['n_mean_mass'], mdl['tkin'], mdl['width'] ] , [ float(bestn), float(bestT) , float(bestwidth) ] )
 
             final_mask = [False for x in range(len(mdl['tkin']))]
             final_mask[ICO_mdl_index_nTW]=True
@@ -781,10 +784,10 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
                             tauarr.append(mdl['tau_'+this_species])
                             tauval.append(float(bestTau_mcmc_val))
     
-                        ICO_mdl_index_nTW = find_nearest( [ mdl['n_mean'], mdl['tkin'], mdl['width'] ]+tauarr , [ float(bestn_mcmc_val), float(bestT_mcmc_val) , float(bestW_mcmc_val) ]+tauval )
+                        ICO_mdl_index_nTW = find_nearest( [ mdl['n_mean_mass'], mdl['tkin'], mdl['width'] ]+tauarr , [ float(bestn_mcmc_val), float(bestT_mcmc_val) , float(bestW_mcmc_val) ]+tauval )
      
                     else:
-                        ICO_mdl_index_nTW = find_nearest( [ mdl['n_mean'], mdl['tkin'], mdl['width'] ] , [ float(bestn_mcmc_val), float(bestT_mcmc_val) , float(bestW_mcmc_val) ] )
+                        ICO_mdl_index_nTW = find_nearest( [ mdl['n_mean_mass'], mdl['tkin'], mdl['width'] ] , [ float(bestn_mcmc_val), float(bestT_mcmc_val) , float(bestW_mcmc_val) ] )
         
                     final_mask = [False for x in range(len(mdl['tkin']))]
                     final_mask[ICO_mdl_index_nTW]=True

@@ -12,8 +12,18 @@ if __name__ == "__main__":
     ##############################################################
     #################### USER INPUT BELOW ########################
     ##############################################################
-    obsdata_file = 'ascii_galaxy2_interp.txt'    # table of observed intensities in Tmb [K km/s]
-    
+    obsdata_file = 'ascii_models_co_test2.txt'    # table of observed intensities in Tmb [K km/s]
+    #
+    # Expected results:
+    #==================
+    #ID     tkin    n_mean_mass     width   tau_12co    tau_13co    tau_c17o    tau_c18o
+    #00000  10      1.91367         0.2     5.0         0.1         0.1         0.1
+    #04514  20      2.80345         0.8     5.0         0.3         0.3         0.2
+    #20843  15      3.20835         0.7     8.0         0.1         0.3         0.3
+    #44621  25      3.81773         0.6     6.5         0.3         0.3         0.3
+    #63066  15      4.17048         0.3     8.0         0.2         0.1         0.2
+    #88524  15      5.01377         0.2     8.0         0.3         0.1         0.1
+    #
     ###################################
     # Note that the input file (obsdata_file) must have a 1-line
     # header, indicating the line intensities (in K km/s) via the
@@ -56,7 +66,7 @@ if __name__ == "__main__":
                                             # Models will be downloaded upon usage (note large file size)
                                             # see README_models.md
                                             #
-    type_of_models='std43_incl_HNC_excl_C18O'                     # which models to use (one of: std, std43, std43_incl_HNC_excl_C18O, co, coarse)
+    type_of_models='co'                     # which models to use (one of: std, std43, std43_incl_HNC_excl_C18O, co, coarse)
                                             # std (up to 3-2): 2 x 35GB
                                             # std43 (up to 4-3): 2 x 38GB
                                             # std43_incl_HCN_excl_C18O (up to 4-3): 2 x 38GB
@@ -102,7 +112,7 @@ if __name__ == "__main__":
     domcmc=True                             # use MCMC for parameter estimation; this is recommended, but may take very long
     use_pt=False                            # if True, the PTMCMC Sampler is used instead of emcee
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
-    nsims=5000                              # number of MCMC simulations to perform (should be >1000, better even more)
+    nsims=50000                             # number of MCMC simulations to perform (should be >1000, better even more)
     n_cpus = 12                             # Upper limit for number of cpus used for MCMC 
     #######################################################################################################
 

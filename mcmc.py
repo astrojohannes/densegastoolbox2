@@ -7,6 +7,7 @@ from scipy.spatial import distance
 from scipy.interpolate import LinearNDInterpolator, griddata
 import emcee
 from multiprocessing import Pool
+import itertools
 
 ##################################################################
 
@@ -123,6 +124,7 @@ def getloglike(theta, grid_theta, grid_loglike, interp):
     intheta=np.array(theta,dtype=np.float64)
     diff=np.ones_like(grid_loglike)*1e20
     isclose=np.zeros_like(grid_loglike,dtype=bool)
+    n_params, n_points = grid_theta.shape 
 
     # Compute the bounds for each dimension based on the transposed grid
     min_bounds = grid_theta.T.min(axis=0)  # Minimum for each dimension
@@ -147,53 +149,71 @@ def getloglike(theta, grid_theta, grid_loglike, interp):
 
         # check if the nearest neighbour is within some relative tolerance
         if not isclose[ind]:
+            print("Intheta ",intheta," is not close to any grid point. Returning -np.inf.")
             this_loglike = -np.inf
 
         if not np.isfinite(this_loglike):
             this_loglike = -np.inf
 
+
     #############################
     # interpolated loglike
     else:
         # Ensure theta is within bounds
+        #print(intheta,min_bounds,max_bounds)
         if not np.all((intheta >= min_bounds) & (intheta <= max_bounds)):
+            #print("Intheta",intheta,"outside bounds. Returning -np.inf")
             return -np.inf  # Outside grid bounds
 
-        # Find the indices of the neighbors along each axis
-        neighbors = []
-        for dim in range(grid_theta.shape[0]):
-            axis_values = grid_theta[dim]
-            lower_idx = np.searchsorted(axis_values, intheta[dim]) - 1
+        # Find the indices of neighbors along each dimension
+        indices = []
+        for dim in range(n_params):
+            axis_values = grid_theta[dim]  # Values along this dimension, shape: (90720,)
+            sorted_indices = np.argsort(axis_values)  # Sort indices for easier neighbor lookup
+            axis_values_sorted = axis_values[sorted_indices]
+
+            # Find lower and upper neighbors
+            lower_idx = np.searchsorted(axis_values_sorted, intheta[dim]) - 1
             upper_idx = lower_idx + 1
-            if lower_idx < 0 or upper_idx >= len(axis_values):
+
+            if lower_idx < 0 or upper_idx >= n_points:
+                #print("Intheta",intheta,"too close to bounds for interpolation. Returning -np.inf")
                 return -np.inf  # Out of bounds
 
-            neighbors.append((lower_idx, upper_idx))
+            indices.append([sorted_indices[lower_idx], sorted_indices[upper_idx]])
 
-        # Perform linear interpolation
+        # Generate all combinations of neighbors
+        neighbor_combinations = list(itertools.product(*indices))  # Shape: (2^n, n)
+
+        # Interpolate loglike using all neighbors
         interpolated_loglike = 0.0
-        weights = np.ones(len(neighbors))  # Initialize weights
-        for dim, (lower_idx, upper_idx) in enumerate(neighbors):
-            lower_value = grid_theta[dim, lower_idx]
-            upper_value = grid_theta[dim, upper_idx]
-            lower_loglike = grid_loglike[lower_idx]
-            upper_loglike = grid_loglike[upper_idx]
+        total_weight = 0.0
 
-            # Linear interpolation weight
-            weight_upper = (intheta[dim] - lower_value) / (upper_value - lower_value)
-            weight_lower = 1.0 - weight_upper
+        for combination in neighbor_combinations:
+            weight = 1.0
+            for dim, idx in enumerate(combination):
+                axis_values = grid_theta[dim]
+                lower_value = axis_values[indices[dim][0]]
+                upper_value = axis_values[indices[dim][1]]
 
-            # Weighted sum
-            interpolated_loglike += (
-                weight_lower * lower_loglike + weight_upper * upper_loglike
-            )
+                if axis_values[idx] < intheta[dim]:
+                    weight *= (intheta[dim] - lower_value) / (upper_value - lower_value)
+                else:
+                    weight *= (upper_value - intheta[dim]) / (upper_value - lower_value)
 
-            #print(intheta,lower_value,lower_loglike,upper_value,upper_loglike)
+            # Compute flat index for 1D loglike
+            flat_index = combination[0]  # Combination gives direct index in grid_loglike
+            interpolated_loglike += weight * grid_loglike[flat_index]
+            total_weight += weight
+
+        # Normalize by total weight
+        if total_weight > 0:
+            interpolated_loglike /= total_weight
+        else:
+            print("Total weight is 0 or less. Returning -np.inf.")
+            interpolated_loglike = -np.inf
 
         this_loglike = interpolated_loglike
-
-        #print(this_loglike)
-        #print()
 
     return this_loglike
 
@@ -204,25 +224,34 @@ def mymcmc(grid_theta, grid_loglike, ndim, nwalkers, interp, nsims, labels, conf
 
     if do_ptmcmc:
 
-	    p0=getpos_ptmcmc(labels,nwalkers,ndim, conf)
+        p0=getpos_ptmcmc(labels,nwalkers,ndim, conf)
 
-	    # variance defines step_size
-	    step_size = 0.1
-	    cov = np.eye(ndim) * step_size**2
+        # variance defines step_size
+        step_size = 0.1
+        cov = np.eye(ndim) * step_size**2
 
-	    sampler = PTMCMCSampler.PTSampler(ndim, getloglike, getprior, cov=np.copy(cov), loglargs=([grid_theta,grid_loglike,interp]), logpargs=([grid_theta,ndim]), outDir="./chains"+pixelnr)
-	    sampler.sample(p0, nsteps, burn=int(nsteps/5), thin=1, SCAMweight=10, AMweight=10, DEweight=10, NUTSweight=10, HMCweight=20, MALAweight=10, HMCsteps=50, HMCstepsize=0.08)
+        sampler = PTMCMCSampler.PTSampler(ndim, getloglike, getprior, cov=np.copy(cov), loglargs=([grid_theta,grid_loglike,interp]), logpargs=([grid_theta,ndim]), outDir="./chains"+pixelnr)
+        sampler.sample(p0, nsteps, burn=int(nsteps/5), thin=1, SCAMweight=10, AMweight=10, DEweight=10, NUTSweight=10, HMCweight=20, MALAweight=10, HMCsteps=50, HMCstepsize=0.08)
 
-	    return
+        return
 
     else:
         with Pool(processes=n_cpus) as pool:
 
-            moves = [(emcee.moves.DEMove(), 0.8), (emcee.moves.DESnookerMove(), 0.2)]
+            moves_test1 = [(emcee.moves.DEMove(sigma=1e-9,gamma0=0.005), 0.3), (emcee.moves.DEMove(sigma=1e-7,gamma0=0.02), 0.3), (emcee.moves.DESnookerMove(gammas=0.5), 0.3), (emcee.moves.KDEMove(), 0.1)]
+            moves_test2 = [ (emcee.moves.DEMove(sigma=1e-9,gamma0=0.0025), 0.2), \
+                            (emcee.moves.DEMove(sigma=1e-8,gamma0=0.01), 0.2), \
+                            (emcee.moves.DEMove(sigma=1e-7,gamma0=0.04), 0.2), \
+                            (emcee.moves.DESnookerMove(gammas=0.5),0.3), \
+                            (emcee.moves.KDEMove(), 0.1)]
+
+            moves = moves_test2
+
             sampler = emcee.EnsembleSampler(
                 nwalkers, ndim, getloglike,
                 args=([grid_theta, grid_loglike, interp]),
-                moves=moves, pool=pool, backend=backend
+                moves = moves,
+                pool=pool, backend=backend
             )
 
             pos = getpos(labels, nwalkers, ndim, conf, sampler, nsims, nsims_burnin)
@@ -237,7 +266,7 @@ def mymcmc(grid_theta, grid_loglike, ndim, nwalkers, interp, nsims, labels, conf
 
                 # Mask for stuck walkers
                 mask = prob == -np.inf
-                print("mask sum: ", np.sum(mask))
+                print("Number of walkers stuck at -np.inf: ", np.sum(mask))
 
                 # Initialize new walker positions in small ball around max probability
                 if np.sum(mask) != 0:
