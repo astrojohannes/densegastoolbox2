@@ -61,24 +61,18 @@ mpl.rcParams['ytick.right'] = True
 
 ##################################################################
 
-def find_nearest(models,values,cnt=1):
+def find_nearest(models,values):
 
-    mdls=np.vstack(models)
+    mdls=np.vstack(models).T
 
-    distances=[]
-    for i in range(len(models[0])):
-        distances.append(distance.euclidean(mdls[:,i],values))
+    # Calculate squared differences for all grid points (vectorized)
+    diff = np.sum((mdls - values) ** 2, axis=1)
 
-    if cnt==1:
-        idx=np.argmin(distances)
-    else:
-        this_len=len(distances)
-        if this_len>cnt:
-            idx=np.argpartition(distances,cnt)[:cnt]
-        else:
-            idx=np.argpartition(distances,this_len-1)
+    # Find the index of the nearest neighbor
+    nearest_idx = np.argmin(diff)
 
-    return idx
+    return nearest_idx
+
 
 ##################################################################
 
@@ -201,15 +195,30 @@ def makeplot(x,y,z,this_slice,this_bestval,xlabel,ylabel,zlabel,title,pngoutfile
         if len(slicex) == 0 or len(slicey) == 0 or len(slicez) == 0:
             raise ValueError("One of the input arrays is empty.")
 
+        # Combine data into a DataFrame
+        data = pd.DataFrame({'slicex': slicex, 'slicey': slicey, 'slicez': slicez})
+
+        # Group by unique (slicex, slicey) and aggregate slicez (e.g., mean)
+        aggregated_data = data.groupby(['slicex', 'slicey'], as_index=False).mean()
+
+        # Extract aggregated data
+        slicex = aggregated_data['slicex'].values
+        slicey = aggregated_data['slicey'].values
+        slicez = aggregated_data['slicez'].values
+
         if DEBUG:
+            
             from tabulate import tabulate
             print("SLICES FOR PLOTTING - slicex:")
+            print(f"Range of slicex: {slicex.min()} to {slicex.max()}")
             print(tabulate(pd.DataFrame(slicex), headers='keys', tablefmt='psql'))
             print()
             print("SLICES FOR PLOTTING - slicey:")
+            print(f"Range of slicey: {slicey.min()} to {slicey.max()}")
             print(tabulate(pd.DataFrame(slicey), headers='keys', tablefmt='psql'))
             print()
             print("SLICES FOR PLOTTING - slicez:")
+            print(f"Range of slicez: {slicez.min()} to {slicez.max()}")
             print(tabulate(pd.DataFrame(slicez), headers='keys', tablefmt='psql'))
             print()
 
@@ -255,7 +264,10 @@ def makeplot(x,y,z,this_slice,this_bestval,xlabel,ylabel,zlabel,title,pngoutfile
 
         ######################################
 
-    except:
+    except Exception as e:
+        if DEBUG:
+            print(f"[ERROR] Type: {type(e).__name__}")
+            print(f"[ERROR] Message: {e}")
         print(f"[ERROR] Creating Plot {pngoutfile} failed.")
 
 ##################################################################
@@ -267,7 +279,7 @@ def makeplot(x,y,z,this_slice,this_bestval,xlabel,ylabel,zlabel,title,pngoutfile
 
 def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,domcmc,use_pt,nsteps,type_of_models,usecsv,n_cpus=1):
 
-    interp=True    # interpolate loglike on model grid (for mcmc sampler)
+    interp=False    # interpolate loglike on model grid (for mcmc sampler)
 
     # import dgt_config.py as conf using importlib
     dgt_config_file='./models_'+type_of_models+'/dgt_config.py'
@@ -858,11 +870,11 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
             # combine 4 plots to a single file
             fig, ax = plt.subplots(2, 2, sharex='col', sharey='row',figsize=(11.5,8))
             # Chi2 vs n plot
-
-            ax[0,0].scatter(chi2, np.log10(n),c=width, cmap='Accent',marker=',',s=4,vmin=width.min(),vmax=width.max())
+            # Note: n is log already!
+            ax[0,0].scatter(chi2, n, c=width, cmap='Accent',marker=',',s=4,vmin=width.min(),vmax=width.max())
             ax[0, 0].set_ylabel('$\\log\\ n$')
 
-            pl1=ax[0,1].scatter(zoom_chi2, np.log10(zoom_n),c=zoom_width, cmap='Accent',marker=',',s=9,vmin=width.min(),vmax=width.max())
+            pl1=ax[0,1].scatter(zoom_chi2, zoom_n, c=zoom_width, cmap='Accent',marker=',',s=9,vmin=width.min(),vmax=width.max())
             #fig.colorbar(pl1,ax=ax[0,1],label='$\mathsf{width}$')
             fig.colorbar(pl1, ax=ax[0, 1], label='$\\mathsf{width}$')
 
@@ -891,7 +903,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
             # all parameters free: (n,T) vs. chi2
             if userT==0 and userWidth==0:
 
-                  x=np.log10(zoom_n)
+                  x=zoom_n  # n is log already
                   y=np.log10(zoom_T)
                   z=np.log10(zoom_chi2)
                   this_slice=zoom_width
@@ -907,7 +919,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
 
                   ########################## PLOT 3 #############################
                   # all parameters free: (n,width) vs. chi2
-                  x=np.log10(zoom_n)
+                  x=zoom_n  # n is log already
                   y=zoom_width
                   z=np.log10(zoom_chi2)
                   this_slice=zoom_T
@@ -923,7 +935,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
  
             # width fixed: (n,T) vs. chi2
             elif userT==0 and userWidth>0:
-                  x=np.log10(zoom_n)
+                  x=zoom_n # n is log already
                   y=np.log10(zoom_T)
                   z=np.log10(zoom_chi2)
                   this_slice=zoom_width
@@ -939,7 +951,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
 
             # T fixed: (n,width) vs. chi2
             elif userT>0 and userWidth==0:
-                  x=np.log10(zoom_n)
+                  x=zoom_n  # n is log already
                   y=zoom_width
                   z=np.log10(zoom_chi2)
                   this_slice=zoom_T

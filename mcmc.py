@@ -122,59 +122,50 @@ def getprior(pp,grid_theta,ndim):
 def getloglike(theta, grid_theta, grid_loglike, interp):
 
     intheta=np.array(theta,dtype=np.float64)
-    diff=np.ones_like(grid_loglike)*1e20
-    isclose=np.zeros_like(grid_loglike,dtype=bool)
-    n_params, n_points = grid_theta.shape 
 
     # Compute the bounds for each dimension based on the transposed grid
     min_bounds = grid_theta.T.min(axis=0)  # Minimum for each dimension
     max_bounds = grid_theta.T.max(axis=0)  # Maximum for each dimension
 
+    # Ensure intheta is within bounds
+    #print(intheta,min_bounds,max_bounds)
+    if not np.all((intheta >= min_bounds) & (intheta <= max_bounds)):
+        #print("Intheta",intheta,"outside bounds. Returning -np.inf")
+        return -np.inf  # Outside grid bounds
+
+
     ###########################
     # nearest neighbor loglike
     if not interp:
 
-        for i in range(len(grid_theta.T)):
-            # Calculate element-wise quadratic difference and sum it up
-            diff[i] = ((intheta - grid_theta.T[i]) ** 2.0).sum()
-   
-            # Check if the current point is close and within bounds
-            within_bounds = np.all((intheta >= min_bounds) & (intheta <= max_bounds))
-            isclose[i] = np.allclose(intheta, grid_theta.T[i], rtol=0.5) and within_bounds
-            #print(intheta,min_bounds,max_bounds,within_bounds)
+        # Calculate squared differences for all grid points (vectorized)
+        diff = np.sum((grid_theta.T - intheta) ** 2, axis=1)
 
-        # find nearest neighbour in multidim space
-        ind=np.array(diff,dtype=np.float64).argmin()
-        this_loglike=grid_loglike[ind]
+        # Find the index of the nearest neighbor
+        nearest_idx = np.argmin(diff)
 
-        # check if the nearest neighbour is within some relative tolerance
-        if not isclose[ind]:
-            print("Intheta ",intheta," is not close to any grid point. Returning -np.inf.")
-            this_loglike = -np.inf
+        this_loglike=grid_loglike[nearest_idx]
 
         if not np.isfinite(this_loglike):
-            this_loglike = -np.inf
+            return -np.inf
 
 
     #############################
     # interpolated loglike
     else:
-        # Ensure theta is within bounds
-        #print(intheta,min_bounds,max_bounds)
-        if not np.all((intheta >= min_bounds) & (intheta <= max_bounds)):
-            #print("Intheta",intheta,"outside bounds. Returning -np.inf")
-            return -np.inf  # Outside grid bounds
-
+        """
         # Find the indices of neighbors along each dimension
         indices = []
         for dim in range(n_params):
-            axis_values = grid_theta[dim]  # Values along this dimension, shape: (90720,)
+            axis_values = grid_theta[dim]  # Values along this dimension/parameter
             sorted_indices = np.argsort(axis_values)  # Sort indices for easier neighbor lookup
             axis_values_sorted = axis_values[sorted_indices]
 
             # Find lower and upper neighbors
             lower_idx = np.searchsorted(axis_values_sorted, intheta[dim]) - 1
             upper_idx = lower_idx + 1
+
+            print(intheta,dim, axis_values_sorted[lower_idx], axis_values_sorted[upper_idx], grid_loglike[sorted_indices[lower_idx]], grid_loglike[sorted_indices[upper_idx]])
 
             if lower_idx < 0 or upper_idx >= n_points:
                 #print("Intheta",intheta,"too close to bounds for interpolation. Returning -np.inf")
@@ -201,7 +192,8 @@ def getloglike(theta, grid_theta, grid_loglike, interp):
                 else:
                     weight *= (upper_value - intheta[dim]) / (upper_value - lower_value)
 
-            # Compute flat index for 1D loglike
+
+            # Compute flat index for 1D grid_loglike
             flat_index = combination[0]  # Combination gives direct index in grid_loglike
             interpolated_loglike += weight * grid_loglike[flat_index]
             total_weight += weight
@@ -214,8 +206,51 @@ def getloglike(theta, grid_theta, grid_loglike, interp):
             interpolated_loglike = -np.inf
 
         this_loglike = interpolated_loglike
+        print("Final loglike for theta ",intheta," is ",str(this_loglike))
+        print()
+        """
+
+        n_params, n_points = grid_theta.shape
+
+        # Find the indices of neighbors along each dimension
+        indices = []
+        for dim in range(n_params):
+            axis_values = grid_theta[dim]  # Values along this dimension/parameter
+            sorted_indices = np.argsort(axis_values)  # Sort indices for easier neighbor lookup
+            axis_values_sorted = axis_values[sorted_indices]
+
+            # Find lower and upper neighbors
+            lower_idx = np.searchsorted(axis_values_sorted, intheta[dim]) - 1
+            upper_idx = lower_idx + 1
+
+            #print(intheta, dim, axis_values_sorted[lower_idx], axis_values_sorted[upper_idx], grid_loglike[sorted_indices[lower_idx]], grid_loglike[sorted_indices[upper_idx]])
+
+            if lower_idx < 0 or upper_idx >= n_points:
+                return -np.inf  # Out of bounds
+
+            indices.append([sorted_indices[lower_idx], sorted_indices[upper_idx]])
+
+        # Generate all combinations of neighbors
+        neighbor_combinations = list(itertools.product(*indices))  # Shape: (2^n, n)
+
+        # Interpolate loglike using all neighbors (simple average)
+        interpolated_loglike = 0.0
+
+        for combination in neighbor_combinations:
+            # Compute flat index for 1D grid_loglike
+            flat_index = combination[0]  # Combination gives direct index in grid_loglike
+            interpolated_loglike += grid_loglike[flat_index]
+
+        # Normalize by the number of neighbors (simple averaging)
+        interpolated_loglike /= len(neighbor_combinations)
+
+        this_loglike = interpolated_loglike
+        #print("Final loglike for theta ", intheta, " is ", str(this_loglike))
+        #print()
 
     return this_loglike
+
+
 
 #######################################################################
 

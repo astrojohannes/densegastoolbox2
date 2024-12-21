@@ -12,7 +12,7 @@ if __name__ == "__main__":
     ##############################################################
     #################### USER INPUT BELOW ########################
     ##############################################################
-    obsdata_file = 'ascii_models_co_test2.txt'    # table of observed intensities in Tmb [K km/s]
+    obsdata_file = 'ascii_models_co_test3.txt'    # table of observed intensities in Tmb [K km/s]
     #
     # Expected results:
     #==================

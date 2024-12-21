@@ -35,7 +35,7 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
 
 
     if not pd.isna(np.nanmax(tau)) and not pd.isna(np.nanmin(tau)):
-        burnin = int(20 * np.nanmax(tau))
+        burnin = int(3 * np.nanmax(tau))
         thin = max(1, int(0.5 * np.nanmin(tau)))
         thin = 1
 
