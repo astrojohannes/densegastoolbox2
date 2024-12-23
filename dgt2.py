@@ -263,7 +263,8 @@ def makeplot(x,y,z,this_slice,this_bestval,xlabel,ylabel,zlabel,title,pngoutfile
         if len(slicex) == 0 or len(slicey) == 0 or len(slicez) == 0:
             raise ValueError("One of the input arrays is empty.")
 
-        if len(slicex) > 150:
+        if len(slicex) > 50:
+            print("Aggregating data since slicex is long.")
 
             # Combine data into a DataFrame
             data = pd.DataFrame({'slicex': slicex, 'slicey': slicey, 'slicez': slicez})
