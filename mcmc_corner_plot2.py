@@ -24,17 +24,17 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
 
         myrange=[(1.8,5.1),(8,32),(0.1,0.9)]
         myrange_tau=[]
-        for lbl in range(len(labels[3:])):
-            if lbl.startswith("CO"):
+        for lbl in labels[3:]:
+            if lbl.startswith("tau_12co"):
                 range_tau = (4.5,8.5)
-            elif lbl.startswith("C18O") or lbl.startswith("C17O") or lbl.startswith("13CO"):
+            elif lbl.startswith("tau_c18o") or lbl.startswith("tau_c17o") or lbl.startswith("tau_13co"):
                 range_tau = (0.05,0.35)
             else:
                 range_tau = (0.7,1.6)
 
             myrange_tau.append(range_tau)
 
-        myrange =+ myrange_tau
+        myrange += myrange_tau
 
     reader = emcee.backends.HDFBackend(infile)
     tau = reader.get_autocorr_time(tol=0) # this tau is not optical depth, but the MCMC autocorrelation time
@@ -207,17 +207,18 @@ def mcmc_corner_plot_ptmcmc(outfile,labels,ndim,pixelnr=1):
         #myrange=[(1.8,5.1),(8,32),(0.1,0.9)] + [(0.0,9.0) for x in range(len(labels[3:]))]
         myrange=[(1.8,5.1),(8,32),(0.1,0.9)]
         myrange_tau=[]
-        for lbl in range(len(labels[3:])):
-            if lbl.startswith("CO"):
+
+        for lbl in labels[3:]:
+            if lbl.startswith("tau_12co"):
                 range_tau = (4.5,8.5)
-            elif lbl.startswith("C18O") or lbl.startswith("C17O") or lbl.startswith("13CO"):
+            elif lbl.startswith("tau_c18o") or lbl.startswith("tau_c17o") or lbl.startswith("tau_13co"):
                 range_tau = (0.05,0.35)
             else:
-                range_tau = (0.7,1.6)               
+                range_tau = (0.7,1.6)
 
             myrange_tau.append(range_tau)
 
-        myrange =+ myrange_tau
+        myrange += myrange_tau
 
     chain = np.loadtxt('./chains'+pixelnr+'/chain_1.txt')
     # the last 4 columns are:
