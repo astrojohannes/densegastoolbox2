@@ -34,7 +34,7 @@ mpl.use("TkAgg")
 cmap='cubehelix'
 
 DEBUG=False
-debug_rows_shown = 100
+debug_rows_shown = 20
 
 # ignore some warnings
 warnings.filterwarnings("ignore", message="divide by zero encountered in divide")
@@ -263,16 +263,18 @@ def makeplot(x,y,z,this_slice,this_bestval,xlabel,ylabel,zlabel,title,pngoutfile
         if len(slicex) == 0 or len(slicey) == 0 or len(slicez) == 0:
             raise ValueError("One of the input arrays is empty.")
 
-        # Combine data into a DataFrame
-        data = pd.DataFrame({'slicex': slicex, 'slicey': slicey, 'slicez': slicez})
+        if len(slicex) > 150:
 
-        # Group by unique (slicex, slicey) and aggregate slicez (e.g., mean)
-        aggregated_data = data.groupby(['slicex', 'slicey'], as_index=False).mean()
+            # Combine data into a DataFrame
+            data = pd.DataFrame({'slicex': slicex, 'slicey': slicey, 'slicez': slicez})
 
-        # Extract aggregated data
-        slicex = aggregated_data['slicex'].values
-        slicey = aggregated_data['slicey'].values
-        slicez = aggregated_data['slicez'].values
+            # Group by unique (slicex, slicey) and aggregate slicez (e.g., mean)
+            aggregated_data = data.groupby(['slicex', 'slicey'], as_index=False).mean()
+
+            # Extract aggregated data
+            slicex = aggregated_data['slicex'].values
+            slicey = aggregated_data['slicey'].values
+            slicez = aggregated_data['slicez'].values
 
         if DEBUG:
             
@@ -556,21 +558,22 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
         print("[INFO] Running parameter inferral test using synthetic observations from model grid.")
 
         have_id = False
-        ra=np.array(obs['RA'])
-        de=np.array(obs['DEC'])
-        pixels=range(len(ra))
 
         obsdata_file = Path(obsdata_file).stem + "_model_test.txt"
 
         # Generate synthetic observations
         obs = generate_synthetic_obs(mdl, obstrans, normtrans, species)
 
-        rows_in_file, rows_selected = len(obs), len(obs)
-        print(f"[INFO] Synthetic observations generated with {rows_selected} rows.")
+        ra=np.array(obs['RA'])
+        de=np.array(obs['DEC'])
+        pixels = len(ra)
+        print(f"[INFO] Synthetic observations generated with {pixels} rows.")
 
         if DEBUG:
-            print("[DEBUG] SYNTHETIC OBSERVATIONS FROM MODEL FILE")
-            print(obs)
+            print("SYNTHETIC OBSERVATIONS FROM MODEL FILE")
+            print(tabulate(pd.DataFrame(obs).head(debug_rows_shown), headers='keys', tablefmt='psql'))
+            print()
+
 
 
     #############################################################################
@@ -659,8 +662,8 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
         width=ma.array(mdl['width'])
         densefrac=ma.array(mdl['fdense_thresh'])
 
-        # filter out large values (since loglike is propto 10**chi2 --> chi2>100 leads to crazy high numbers 
-        chi2lowlim,chi2uplim=0,9999
+        # filter out large values
+        chi2lowlim,chi2uplim=0,99999999
         #chi2lowlim,chi2uplim=np.quantile(chi2,[0.0,0.95])
 
         # create masks
@@ -712,8 +715,9 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
 
         # These limits correspond to +/-1 sigma error
         if dgf>0:
-            cutoff=0.05  # area to the right of critical value; here 5% --> 95% confidence  --> +/- 2sigma
-            #cutoff=0.32  # area to the right of critical value; here 32% --> 68% confidence --> +/- 1sigma
+            cutoff=0.0027  # area to the right of critical value; here 1% --> 99% confidence  --> +/- 3sigma
+            #cutoff=0.0455  # area to the right of critical value; here 5% --> 95% confidence  --> +/- 2sigma
+            #cutoff=0.3173  # area to the right of critical value; here 32% --> 68% confidence --> +/- 1sigma
             deltachi2=scipychi2.ppf(1-cutoff, dgf)
         else:
             print("DGF is zero or negative.")

@@ -47,7 +47,7 @@ if __name__ == "__main__":
     #
     # Test parameter inferral based on transitions found in the
     # user input file (obsdata_file) but use model intensities
-    do_model_test=False                      # If True, this will force to run MCMC mode
+    do_model_test=True                      # If True, this will force to run MCMC mode
     #
     #######################################################################################################
     powerlaw=True                           # logNorm or logNorm+PL density distribution
