@@ -558,6 +558,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
         have_id = False
         ra=np.array(obs['RA'])
         de=np.array(obs['DEC'])
+        pixels=range(len(ra))
 
         obsdata_file = Path(obsdata_file).stem + "_model_test.txt"
 
