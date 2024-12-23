@@ -9,6 +9,7 @@
 ######################################################################################
 
 import os
+from pathlib import Path
 import numpy as np
 import numpy.ma as ma
 import matplotlib as mpl
@@ -33,6 +34,7 @@ mpl.use("TkAgg")
 cmap='cubehelix'
 
 DEBUG=False
+debug_rows_shown = 100
 
 # ignore some warnings
 warnings.filterwarnings("ignore", message="divide by zero encountered in divide")
@@ -58,6 +60,72 @@ mpl.rcParams['xtick.direction'] = 'in'
 mpl.rcParams['ytick.direction'] = 'in'
 mpl.rcParams['xtick.top'] = True
 mpl.rcParams['ytick.right'] = True
+
+##################################################################
+
+def generate_synthetic_obs(mdl, obstrans, normtrans, species):
+    """
+    Generate synthetic observations based on model grid.
+    """
+    synthetic_obs = {}
+
+    # Select a range of parameter values
+    grid_n = 1.9 + np.arange(32) * 0.1
+    test_n = [grid_n[3], grid_n[15], grid_n[-1]]  # Low, mid, high
+    test_T = [10, 30]  # Low, high
+    test_W = [0.2, 0.4, 0.8]  # Low, mid, high
+
+    # Tau configuration
+    test_tau = {}
+    for lbl in species:
+        if lbl.startswith("CO"):
+            test_tau["tau_12co"] = 6.5
+        elif lbl.startswith("C18O"):
+            test_tau["tau_c18o"] = 0.1
+        elif lbl.startswith("C17O"):
+            test_tau["tau_c17o"] = 0.2
+        elif lbl.startswith("13CO"):
+            test_tau["tau_13co"] = 0.3
+        else:
+            this_lbl = "tau_"+lbl.lower()
+            test_tau[this_lbl] =  1.5
+
+    # Generate synthetic observations
+    matching_rows = []
+    for n_val in test_n:
+        for T_val in test_T:
+            for W_val in test_W:
+
+                # Filter mdl to select all matching rows
+                filtered_mdl = mdl[
+                    np.isclose(mdl["n_mean"], n_val, atol=1e-5) &
+                    (mdl["tkin"] == T_val) &
+                    (mdl["width"] == W_val)
+                ]
+
+                for tau,val in test_tau.items():
+
+                    filtered_mdl = filtered_mdl[filtered_mdl[tau] == val]
+
+                # Append the matching rows to the list
+                matching_rows.append(filtered_mdl)
+
+    # Combine all matching rows into a single DataFrame
+    df = pd.concat(matching_rows, ignore_index=True)
+
+    for t in obstrans:
+        t_mdl = linename_obs2mdl(t)
+        df = df.rename(columns={t_mdl: t})
+
+    for t in obstrans: 
+        df["UC_"+t]=df[t]/1000.0   # SNR of 1000
+    df["UC_"+normtrans]=df[normtrans]/1000.0
+
+
+    df['RA'] = [1.0 * i for i in range(len(df['tkin']))]
+    df['DEC'] = [1.0 * i for i in range(len(df['tkin']))]
+
+    return df
 
 ##################################################################
 
@@ -211,15 +279,15 @@ def makeplot(x,y,z,this_slice,this_bestval,xlabel,ylabel,zlabel,title,pngoutfile
             from tabulate import tabulate
             print("SLICES FOR PLOTTING - slicex:")
             print(f"Range of slicex: {slicex.min()} to {slicex.max()}")
-            print(tabulate(pd.DataFrame(slicex), headers='keys', tablefmt='psql'))
+            print(tabulate(pd.DataFrame(slicex).head(debug_rows_shown), headers='keys', tablefmt='psql'))
             print()
             print("SLICES FOR PLOTTING - slicey:")
             print(f"Range of slicey: {slicey.min()} to {slicey.max()}")
-            print(tabulate(pd.DataFrame(slicey), headers='keys', tablefmt='psql'))
+            print(tabulate(pd.DataFrame(slicey).head(debug_rows_shown), headers='keys', tablefmt='psql'))
             print()
             print("SLICES FOR PLOTTING - slicez:")
             print(f"Range of slicez: {slicez.min()} to {slicez.max()}")
-            print(tabulate(pd.DataFrame(slicez), headers='keys', tablefmt='psql'))
+            print(tabulate(pd.DataFrame(slicez).head(debug_rows_shown), headers='keys', tablefmt='psql'))
             print()
 
 
@@ -277,7 +345,7 @@ def makeplot(x,y,z,this_slice,this_bestval,xlabel,ylabel,zlabel,title,pngoutfile
 ##################################################################
 ##################################################################
 
-def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,domcmc,use_pt,nsteps,type_of_models,usecsv,n_cpus=1):
+def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,domcmc,use_pt,nsteps,type_of_models,usecsv,n_cpus=1,do_model_test=False):
 
     interp=False    # interpolate loglike on model grid (for mcmc sampler)
 
@@ -320,10 +388,9 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
     if DEBUG:
         from tabulate import tabulate
         print("OBS:")
-        print(tabulate(pd.DataFrame(obs), headers='keys', tablefmt='psql'))
+        print(tabulate(pd.DataFrame(obs).head(debug_rows_shown), headers='keys', tablefmt='psql'))
         print()
  
-
     ###########################
     ##### validate input ######
     ###########################
@@ -475,8 +542,34 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
     if DEBUG:
         from tabulate import tabulate
         print("MODELS ORIG:")
-        print(tabulate(pd.DataFrame(mdl), headers='keys', tablefmt='psql'))
+        print(tabulate(pd.DataFrame(mdl).head(debug_rows_shown), headers='keys', tablefmt='psql'))
         print()
+
+
+
+    ###############################
+    ### Test parameter inferral ###
+    ### replace observations ######
+    ###############################
+
+    if do_model_test:
+        print("[INFO] Running parameter inferral test using synthetic observations from model grid.")
+
+        have_id = False
+        ra=np.array(obs['RA'])
+        de=np.array(obs['DEC'])
+
+        obsdata_file = Path(obsdata_file).stem + "_model_test.txt"
+
+        # Generate synthetic observations
+        obs = generate_synthetic_obs(mdl, obstrans, normtrans, species)
+
+        rows_in_file, rows_selected = len(obs), len(obs)
+        print(f"[INFO] Synthetic observations generated with {rows_selected} rows.")
+
+        if DEBUG:
+            print("[DEBUG] SYNTHETIC OBSERVATIONS FROM MODEL FILE")
+            print(obs)
 
 
     #############################################################################
@@ -505,7 +598,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
 
     if DEBUG:
         print("MODELS Line Ratios:")
-        print(tabulate(pd.DataFrame(mdl), headers='keys', tablefmt='psql'))
+        print(tabulate(pd.DataFrame(mdl).head(debug_rows_shown), headers='keys', tablefmt='psql'))
         print()
 
 
@@ -540,7 +633,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
 
         if DEBUG:
             print("DIFF Pixel "+str(p))
-            print(tabulate(pd.DataFrame(diff), headers='keys', tablefmt='psql'))
+            print(tabulate(pd.DataFrame(diff).head(debug_rows_shown), headers='keys', tablefmt='psql'))
             print()
 
 
@@ -551,7 +644,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
 
         if DEBUG:
             print("CHI2 Pixel "+str(p))
-            print(tabulate(pd.DataFrame(chi2), headers='keys', tablefmt='psql'))
+            print(tabulate(pd.DataFrame(chi2).head(debug_rows_shown), headers='keys', tablefmt='psql'))
             print()
 
 
@@ -709,7 +802,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
         ################################# MCMC ############################
         ###################################################################
 
-        if domcmc:
+        if domcmc or do_model_test:
             if SNR>snr_lim and bestn>0:
                 print("[INFO] Preparing MCMC for pixel "+str(pixnr))
  
@@ -736,12 +829,12 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
 
                 if DEBUG:
                     print("LOGLIKE")
-                    print(tabulate(pd.DataFrame(grid_loglike), headers='keys', tablefmt='psql'))
+                    print(tabulate(pd.DataFrame(grid_loglike).head(debug_rows_shown), headers='keys', tablefmt='psql'))
                     print()
 
                     """
                     print("GRID_THETA")
-                    print(tabulate(pd.DataFrame(grid_theta), headers='keys', tablefmt='psql'))
+                    print(tabulate(pd.DataFrame(grid_theta).head(debug_rows_shown), headers='keys', tablefmt='psql'))
                     print()
                     """
 
@@ -837,6 +930,36 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
                 do_this_plot=True 
                 ###################################################################
                 ###################################################################
+
+                #############################
+                ####### Report for model test
+                #############################
+                if do_model_test:
+                    n_mean_mass_expected = obs['n_mean_mass'][p]
+                    tkin_expected = obs['tkin'][p]
+                    width_expected = obs['width'][p]
+                    print()
+                    print("###############################################################")
+                    print("Expected n_mean_mass: ", round(n_mean_mass_expected,3), "\tDerived n_mean_mass: ", round(float(bestn_mcmc_val),3))
+                    print("Expected Tkin: ", tkin_expected, "\tDerived Tkin: ", round(float(bestT_mcmc_val),2))
+                    print("Expected Width: ", width_expected, "\tDerived Width: ", round(float(bestW_mcmc_val),2))
+                    if TauIsFree:
+                        for ii,lbl in enumerate(labels[3:]):
+
+                            if lbl.startswith("tau_12co"): this_expected_tau_val = 6.5
+                            elif lbl.startswith("tau_c18o"): this_expected_tau_val = 0.1
+                            elif lbl.startswith("tau_c17o"): this_expected_tau_val = 0.2
+                            elif lbl.startswith("tau_13co"): this_expected_tau_val = 0.3
+                            else: this_expected_tau_val = 1.5
+
+                            this_species=lbl.split('_')[1]
+                            _,bestTau_mcmc_val,bestTau_mcmc_upper,bestTau_mcmc_lower=taulist[ii]
+                            this_tau_key = "tau_"+this_species
+                            this_tau_val = round(float(bestTau_mcmc_val),3)
+                            print("Expected ", this_tau_key, ": ", this_expected_tau_val, "\tDerived ", this_tau_key, ": ",this_tau_val)
+
+                    print("###############################################################")
+                    print()
 
             elif SNR<snr_lim:
                 print("[INFO] Skipping pixel id "+str(pixnr)+", because SNR for line " +str(snr_line) + " is lower than user constraint.")

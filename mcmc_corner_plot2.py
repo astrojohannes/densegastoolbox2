@@ -35,7 +35,7 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
 
 
     if not pd.isna(np.nanmax(tau)) and not pd.isna(np.nanmin(tau)):
-        burnin = int(3 * np.nanmax(tau))
+        burnin = int(4 * np.nanmax(tau))
         thin = max(1, int(0.5 * np.nanmin(tau)))
         thin = 1
 
@@ -152,7 +152,7 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
             #contourf_kwargs={'cmap':'viridis','colors':None},\
             show_titles=True, title_kwargs={"fontsize": 16},\
             label_kwargs={"fontsize": 16},
-            levels=[0.1,0.2,0.3,0.4,0.5]
+            levels=[0.1,0.3,0.6,0.9]
         )
 
         # Add vertical lines for the best-fit values on each histogram and plot Gaussian

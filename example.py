@@ -12,17 +12,7 @@ if __name__ == "__main__":
     ##############################################################
     #################### USER INPUT BELOW ########################
     ##############################################################
-    obsdata_file = 'ascii_models_co_test3.txt'    # table of observed intensities in Tmb [K km/s]
-    #
-    # Expected results:
-    #==================
-    #ID     tkin    n_mean_mass     width   tau_12co    tau_13co    tau_c17o    tau_c18o
-    #00000  10      1.91367         0.2     5.0         0.1         0.1         0.1
-    #04514  20      2.80345         0.8     5.0         0.3         0.3         0.2
-    #20843  15      3.20835         0.7     8.0         0.1         0.3         0.3
-    #44621  25      3.81773         0.6     6.5         0.3         0.3         0.3
-    #63066  15      4.17048         0.3     8.0         0.2         0.1         0.2
-    #88524  15      5.01377         0.2     8.0         0.3         0.1         0.1
+    obsdata_file = 'ascii_test.txt'    # table of observed intensities in Tmb [K km/s]
     #
     ###################################
     # Note that the input file (obsdata_file) must have a 1-line
@@ -54,7 +44,12 @@ if __name__ == "__main__":
     # #####################################################################################################
     # ###################################### User INPUT Parameters ########################################
     # #####################################################################################################
-
+    #
+    # Test parameter inferral based on transitions found in the
+    # user input file (obsdata_file) but use model intensities
+    do_model_test=True                      # If True, this will force to run MCMC mode
+    #
+    #######################################################################################################
     powerlaw=True                           # logNorm or logNorm+PL density distribution
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
     T=0                                     # gas temperature; use T=0 to leave as free parameter
@@ -112,12 +107,12 @@ if __name__ == "__main__":
     domcmc=True                             # use MCMC for parameter estimation; this is recommended, but may take very long
     use_pt=False                            # if True, the PTMCMC Sampler is used instead of emcee
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
-    nsims=50000                             # number of MCMC simulations to perform (should be >1000, better even more)
+    nsims=10000                             # number of MCMC simulations to perform (should be >1000, better even more)
     n_cpus = 12                             # Upper limit for number of cpus used for MCMC 
     #######################################################################################################
 
     # call Dense GasTool box
-    dgt(obsdata_file,powerlaw,T,W,tau,snr_line,snr_lim,plotting,domcmc,use_pt,nsims,type_of_models,models_from_csv,n_cpus)
+    dgt(obsdata_file,powerlaw,T,W,tau,snr_line,snr_lim,plotting,domcmc,use_pt,nsims,type_of_models,models_from_csv,n_cpus,do_model_test)
 
     # exit
     exit(0)
