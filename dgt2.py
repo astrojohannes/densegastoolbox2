@@ -263,19 +263,18 @@ def makeplot(x,y,z,this_slice,this_bestval,xlabel,ylabel,zlabel,title,pngoutfile
         if len(slicex) == 0 or len(slicey) == 0 or len(slicez) == 0:
             raise ValueError("One of the input arrays is empty.")
 
-        if len(slicex) > 50:
-            print("Aggregating data since slicex is long.")
+        print("[INFO] Aggregating data for plotting.")
 
-            # Combine data into a DataFrame
-            data = pd.DataFrame({'slicex': slicex, 'slicey': slicey, 'slicez': slicez})
+        # Combine data into a DataFrame
+        data = pd.DataFrame({'slicex': slicex, 'slicey': slicey, 'slicez': slicez})
 
-            # Group by unique (slicex, slicey) and aggregate slicez (e.g., mean)
-            aggregated_data = data.groupby(['slicex', 'slicey'], as_index=False).mean()
+        # Group by unique (slicex, slicey) and aggregate slicez (e.g., mean)
+        aggregated_data = data.groupby(['slicex', 'slicey'], as_index=False).mean()
 
-            # Extract aggregated data
-            slicex = aggregated_data['slicex'].values
-            slicey = aggregated_data['slicey'].values
-            slicez = aggregated_data['slicez'].values
+        # Extract aggregated data
+        slicex = aggregated_data['slicex'].values
+        slicey = aggregated_data['slicey'].values
+        slicez = aggregated_data['slicez'].values
 
         if DEBUG:
             
@@ -720,6 +719,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
             #cutoff=0.0455  # area to the right of critical value; here 5% --> 95% confidence  --> +/- 2sigma
             #cutoff=0.3173  # area to the right of critical value; here 32% --> 68% confidence --> +/- 1sigma
             deltachi2=scipychi2.ppf(1-cutoff, dgf)
+            deltachi2_fixed = 50
         else:
             print("DGF is zero or negative.")
 
@@ -849,7 +849,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
                 nsims_burnin = 200
                                 
                 # set up backend (from dgt v1.7)
-                status_filename = './results2/'+obsdata_file[:-4]+'_mcmc_'+str(p+1)+'.h5'
+                status_filename = './results2/'+obsdata_file[:-4]+'_mcmc_'+str(pixnr)+'.h5'
                 backend = emcee.backends.HDFBackend(status_filename)
                 # reset if already exists
                 #backend.reset(nwalkers, ndim)
@@ -988,7 +988,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
                 os.makedirs('./results2/')
 
             # zoom-in variables
-            idx=np.where(chi2<bestchi2+deltachi2)
+            idx=np.where(chi2<bestchi2+deltachi2_fixed)
             zoom_n=n[idx].compressed()
             zoom_chi2=chi2[idx].compressed()
             zoom_width=width[idx].compressed()
@@ -1013,7 +1013,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
             ax[1, 0].set_ylabel('$\\log\\ T$')
 
             # Chi2 vs T plot zoom-in
-            zoom_T=T[chi2<bestchi2+deltachi2].compressed()
+            zoom_T=T[chi2<bestchi2+deltachi2_fixed].compressed()
             pl2=ax[1,1].scatter(zoom_chi2, np.log10(zoom_T),c=zoom_width, cmap='Accent',marker=',',s=9,vmin=width.min(),vmax=width.max())
             ax[1, 1].set_xlabel('$\\chi^2$')
             fig.colorbar(pl2, ax=ax[1, 1], label='$\\mathsf{width}$')
@@ -1021,7 +1021,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
             # plot
             fig.subplots_adjust(left=0.06, bottom=0.06, right=1, top=0.96, wspace=0.04, hspace=0.04)
             fig = gcf()
-            fig.suptitle('Pixel: ('+str(p)+') SNR('+snr_line+'): '+str(SNR), fontsize=14, y=0.99) 
+            fig.suptitle('Pixel: ('+str(pixnr)+') SNR('+snr_line+'): '+str(SNR), fontsize=14, y=0.99) 
             chi2_filename=obsdata_file[:-4]+"_"+str(pixnr)+'_chi2.png'
             fig.savefig('./results2/'+chi2_filename) 
             #plt.show()
