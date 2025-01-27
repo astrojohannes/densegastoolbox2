@@ -1,11 +1,19 @@
 # Linux
 
-1) Create and activate virtual python environment
-python3 -m venv myenv
+1) Create and activate virtual python3 environment using version <= 3.11
+python3.11 -m venv myenv
 source venv/bin/activate
 
 2) Install requirements
 pip install -r requirements.txt
+
+3) Optional: If you wish to use PTMCMCSampler (use_pt=True in example.py), you may want to use mpi4py
+pip install mpi4py
+
+Note: This requires python-devel and mpi packages that can be installed in Fedora using:
+sudo dnf install mpich-devel
+sudo dnf install openmpi-devel
+sudo dnf install python3.11-devel
 
 3) Adopt and run example.py for your project
 
