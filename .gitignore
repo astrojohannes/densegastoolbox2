@@ -1,0 +1,29 @@
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+
+# Runtime/temp files
+tmp/
+*.tmp
+*.h5
+*.hdf5
+chains*/
+corner_*.png
+
+# Large downloaded model grids
+models_*/emissivities*.pkl
+models_*/emissivities*.csv
+models_*/cache_*.parquet
+
+# Local replot/debug scripts
+replot.py
+mcmc_corner_plot2_replot.py
+
+# Local config generated/downloaded with model grids
+dgt_config.py
+models_*/dgt_config.py

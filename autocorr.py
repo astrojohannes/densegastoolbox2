@@ -35,6 +35,12 @@ def function_1d(x):
     # Compute the FFT and then (from that) the auto-correlation function
     f = np.fft.fft(x - np.mean(x), n=2 * n)
     acf = np.fft.ifft(f * np.conjugate(f))[: len(x)].real
+    if acf[0] == 0 or not np.isfinite(acf[0]):
+        # Constant/non-finite chains have undefined autocorrelation. Return a
+        # finite, conservative array instead of creating NaNs by division.
+        out = np.zeros_like(acf)
+        out[0] = 1.0
+        return out
     acf /= acf[0]
     return acf
 

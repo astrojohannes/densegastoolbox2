@@ -1,4 +1,6 @@
-#!/usr/bin/python
+#!/usr/bin/env python
+
+import sys
 
 from dgt2 import dgt
 
@@ -115,4 +117,4 @@ if __name__ == "__main__":
     dgt(obsdata_file,powerlaw,T,W,tau,snr_line,snr_lim,plotting,domcmc,use_pt,nsims,type_of_models,models_from_csv,n_cpus,do_model_test)
 
     # exit
-    exit(0)
+    sys.exit(0)
