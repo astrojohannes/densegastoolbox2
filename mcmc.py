@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
-from PTMCMCSampler import PTMCMCSampler
 from scipy.spatial import distance
 from scipy.interpolate import LinearNDInterpolator, griddata
 import emcee
@@ -32,37 +31,40 @@ def find_nearest(models,values,cnt=1):
 
 ##################################################################
 
-def getpos(labels,nwalkers,ndim,conf,sampler,nreps, nsims_burnin):
-    ##### Define parameter grid for random selection of initial points for walker #######
-    ##### PARAMETER GRID #####
-    grid_n=1.9+np.arange(32)*0.1
+def getpos(labels, nwalkers, ndim, conf, sampler=None, nreps=None, nsims_burnin=None):
+    """Generate initial walker positions for emcee.
 
-    grid_T=conf.valid_T[1:]  # first value is 0
-    grid_width=conf.valid_W[1:]  # first value is 0
-    grid_tau_thin=[0.1,0.2,0.3]         # cross-check with calc_linerats.py
-    grid_tau_middle=[0.8,1.1,1.5]           # cross-check with calc_linerats.py
-    grid_tau_thick=[5.0,6.5,8.0]        # cross-check with calc_linerats.py
+    Python/emcee 3 expects the starting position array to have shape
+    ``(nwalkers, ndim)``.  The previous implementation returned only one
+    position in the fixed-tau case (``ndim == 3``), which can fail on modern
+    emcee/Python stacks.
+    """
+    grid_n = 1.9 + np.arange(32) * 0.1
+    grid_T = np.asarray(conf.valid_T[1:], dtype=np.float64)      # first value is 0
+    grid_width = np.asarray(conf.valid_W[1:], dtype=np.float64)  # first value is 0
 
-    grid_tau={}
-    for ii,lbl in enumerate(labels[3:]):
-        if lbl=='tau_12co': grid_tau[ii]=grid_tau_thick
-        elif lbl=='tau_13co' or lbl=='tau_c18o' or lbl=='tau_c17o': grid_tau[ii]=grid_tau_thin
-        else: grid_tau[ii]=grid_tau_middle
+    grid_tau_thin = np.array([0.1, 0.2, 0.3], dtype=np.float64)
+    grid_tau_middle = np.array([0.8, 1.1, 1.5], dtype=np.float64)
+    grid_tau_thick = np.array([5.0, 6.5, 8.0], dtype=np.float64)
 
-    if ndim==3:     # case tau is fixed
-        pos = [np.array([ \
-           np.random.choice(grid_n,size=1)[0],\
-           np.random.choice(grid_T,size=1)[0],\
-           np.random.choice(grid_width,size=1)[0]],\
-           dtype=np.float64) for i in range(1)]
-    else:   # case tau is free
-        # messy solution for creating grid
-        pos = np.empty((nwalkers, ndim), dtype = np.float64)
-        pos[:,0] = np.random.choice(grid_n, size=nwalkers)
-        pos[:,1] = np.random.choice(grid_T, size=nwalkers)
-        pos[:,2] = np.random.choice(grid_width, size=nwalkers)
-        for ii,lbl in enumerate(labels[3:]):
-            pos[:,ii+3] = np.random.choice(grid_tau[ii], size=nwalkers)
+    grid_tau = {}
+    for ii, lbl in enumerate(labels[3:]):
+        if lbl == 'tau_12co':
+            grid_tau[ii] = grid_tau_thick
+        elif lbl in ('tau_13co', 'tau_c18o', 'tau_c17o'):
+            grid_tau[ii] = grid_tau_thin
+        else:
+            grid_tau[ii] = grid_tau_middle
+
+    pos = np.empty((nwalkers, ndim), dtype=np.float64)
+    pos[:, 0] = np.random.choice(grid_n, size=nwalkers)
+    pos[:, 1] = np.random.choice(grid_T, size=nwalkers)
+    pos[:, 2] = np.random.choice(grid_width, size=nwalkers)
+
+    if ndim > 3:
+        for ii, _lbl in enumerate(labels[3:]):
+            pos[:, ii + 3] = np.random.choice(grid_tau[ii], size=nwalkers)
+
     return pos
 
 ##################################################################
@@ -258,6 +260,18 @@ def getloglike(theta, grid_theta, grid_loglike, interp):
 def mymcmc(grid_theta, grid_loglike, ndim, nwalkers, interp, nsims, labels, conf, nreps, nsims_burnin, backend, n_cpus=1, pixelnr='1', do_ptmcmc=False):
 
     if do_ptmcmc:
+        # PTMCMCSampler imports mpi4py at import time.  On Fedora/OpenMPI/MPICH
+        # this can fail if the MPI library path is not exported.  Therefore this
+        # optional dependency must be imported lazily and only when use_pt=True.
+        try:
+            from PTMCMCSampler import PTMCMCSampler
+        except Exception as exc:
+            raise ImportError(
+                "PTMCMCSampler/mpi4py could not be imported. It is only required "
+                "when use_pt=True. Either run with use_pt=False, or fix your MPI "
+                "environment, e.g. on Fedora: export PATH=/usr/lib64/openmpi/bin:$PATH "
+                "and export LD_LIBRARY_PATH=/usr/lib64/openmpi/lib:$LD_LIBRARY_PATH."
+            ) from exc
 
         p0=getpos_ptmcmc(labels,nwalkers,ndim, conf)
 
@@ -266,12 +280,14 @@ def mymcmc(grid_theta, grid_loglike, ndim, nwalkers, interp, nsims, labels, conf
         cov = np.eye(ndim) * step_size**2
 
         sampler = PTMCMCSampler.PTSampler(ndim, getloglike, getprior, cov=np.copy(cov), loglargs=([grid_theta,grid_loglike,interp]), logpargs=([grid_theta,ndim]), outDir="./chains"+pixelnr)
-        sampler.sample(p0, nsteps, burn=int(nsteps/5), thin=1, SCAMweight=10, AMweight=10, DEweight=10, NUTSweight=10, HMCweight=20, MALAweight=10, HMCsteps=50, HMCstepsize=0.08)
+        sampler.sample(p0, nsims, burn=int(nsims/5), thin=1, SCAMweight=10, AMweight=10, DEweight=10, NUTSweight=10, HMCweight=20, MALAweight=10, HMCsteps=50, HMCstepsize=0.08)
 
         return
 
     else:
-        with Pool(processes=n_cpus) as pool:
+        pool_context = Pool(processes=n_cpus) if n_cpus and n_cpus > 1 else None
+        pool = pool_context.__enter__() if pool_context is not None else None
+        try:
 
             moves_test1 = [(emcee.moves.DEMove(sigma=1e-9,gamma0=0.005), 0.3), (emcee.moves.DEMove(sigma=1e-7,gamma0=0.02), 0.3), (emcee.moves.DESnookerMove(gammas=0.5), 0.3), (emcee.moves.KDEMove(), 0.1)]
             moves_test2 = [ (emcee.moves.DEMove(sigma=1e-9,gamma0=0.0025), 0.2), \
@@ -313,6 +329,9 @@ def mymcmc(grid_theta, grid_loglike, ndim, nwalkers, interp, nsims, labels, conf
 
             # Do full sampling
             sampler.run_mcmc(pos, nsims, progress=True, store=True)
+        finally:
+            if pool_context is not None:
+                pool_context.__exit__(None, None, None)
 
     return sampler
 

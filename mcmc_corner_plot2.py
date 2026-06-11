@@ -1,15 +1,52 @@
 #!/usr/bin/env python
 
+import os
+from pathlib import Path
+
 import numpy as np
 import corner
 import emcee
 import matplotlib as mpl
+
+if os.environ.get("MPLBACKEND") is None:
+    mpl.use("Agg")
+
 import matplotlib.pyplot as plt
 import pandas as pd
-import sys
-from scipy.optimize import minimize
 from scipy.stats import gaussian_kde
 import autocorr
+
+
+def _kde_mode_and_interval(values):
+    """Return mode, +1sigma and -1sigma estimates robustly.
+
+    Falls back to the median when KDE cannot be computed, e.g. for almost
+    constant samples. This avoids UnboundLocalError/Singular-matrix failures
+    on recent SciPy/NumPy versions.
+    """
+    values = np.asarray(values, dtype=np.float64)
+    values = values[np.isfinite(values)]
+    if values.size == 0:
+        return np.nan, np.nan, np.nan, np.nan, np.nan
+
+    p16, median, p84 = np.percentile(values, [16, 50, 84])
+    plus = p84 - median
+    minus = median - p16
+
+    vmin = np.nanmin(values)
+    vmax = np.nanmax(values)
+    if not np.isfinite(vmin) or not np.isfinite(vmax) or np.isclose(vmin, vmax):
+        return median, plus, minus, p84, p16
+
+    kde_x = np.linspace(vmin, vmax, 1000)
+    try:
+        kde = gaussian_kde(values)
+        kde_y = kde(kde_x)
+        mode = kde_x[np.nanargmax(kde_y)]
+    except Exception:
+        mode = median
+
+    return mode, plus, minus, p84, p16
 
 ############################################################
 
@@ -107,51 +144,23 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
                 nicelabels.append(label)
                 is_tauval = False
 
-            lower_bound = np.nanmin(all_samples[:, i])
-            upper_bound = np.nanmax(all_samples[:, i])
-            kde_x = np.linspace(lower_bound, upper_bound, 1000)
+            kde_mode, upper_bound_1sigma, lower_bound_1sigma, p84, p16 = _kde_mode_and_interval(all_samples[:, i])
+            uncertainty_pos.append(p84)
+            uncertainty_neg.append(p16)
+            kde_modes.append(kde_mode)
+            kde_maxy.append(np.nan)
 
-            # Get 16th, 50th, and 84th percentiles to compute credible intervals
-            percentiles = np.percentile(all_samples[:, i], [16, 50, 84])
-            median = percentiles[1]
-            upper_bound_1sigma = percentiles[2] - median
-            lower_bound_1sigma = median - percentiles[0]
-            uncertainty_pos.append(percentiles[2])
-            uncertainty_neg.append(percentiles[0])
-
-            kde_failed = False
-            try:
-                # KDE computation
-                kde = gaussian_kde(all_samples[:, i])
-            except:
-                # Add little noise to to work-around uniform data issue
-                epsilon = 1e-6  # Small noise level
-                all_samples[:, i] = all_samples[:, i] + np.random.normal(0, epsilon, size=all_samples[:, i].shape)
-
-            if not kde_failed:
-                kde_y = kde(kde_x)
-                # KDE parameter estimate
-                kde_mode = kde_x[np.argmax(kde_y)]
-
-                # Append best-fit values to the lists
-                kde_modes.append(kde_mode)
-                kde_maxy.append(np.max(kde_y))
-
-                if not is_tauval:
-                    result.append(round(kde_mode,2))
-                    result.append(round(upper_bound_1sigma,2))
-                    result.append(round(lower_bound_1sigma,2))
-                else:
-                    taulist.append([label,round(kde_mode,2),round(upper_bound_1sigma,2),round(lower_bound_1sigma,2)])
+            if not is_tauval:
+                result.append(round(kde_mode, 2) if np.isfinite(kde_mode) else np.nan)
+                result.append(round(upper_bound_1sigma, 2) if np.isfinite(upper_bound_1sigma) else np.nan)
+                result.append(round(lower_bound_1sigma, 2) if np.isfinite(lower_bound_1sigma) else np.nan)
             else:
-                kde_modes.append(np.nan)
-                kde_maxy.append(np.nan)
-                if not is_tauval:
-                    result.append(np.nan)
-                    result.append(np.nan)
-                    result.append(np.nan)
-                else:
-                    taulist.append([label,np.nan,np.nan,np.nan])
+                taulist.append([
+                    label,
+                    round(kde_mode, 2) if np.isfinite(kde_mode) else np.nan,
+                    round(upper_bound_1sigma, 2) if np.isfinite(upper_bound_1sigma) else np.nan,
+                    round(lower_bound_1sigma, 2) if np.isfinite(lower_bound_1sigma) else np.nan,
+                ])
 
 
         figure=corner.corner(all_samples, labels=nicelabels,\
@@ -172,7 +181,7 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
         axes = np.array(figure.axes).reshape((n_params, n_params))
 
         for i in range(n_params):
-            if kde_modes[i] != np.nan:
+            if np.isfinite(kde_modes[i]):
                 ax = axes[i, i]  # Access the histograms along the diagonal
 
                 # Plot Best-Fit and uncertainties as vertical lines
@@ -186,6 +195,7 @@ def mcmc_corner_plot(infile, outfile,labels,ndim,pixelnr=1):
 
         # save corner plot
         figure.savefig(outfile,bbox_inches='tight')
+        plt.close(figure)
 
     else:
         print("[WARN] MCMC autocorrelation time (tau) is NaN. Did not converge and corner plot cannot be created!")
@@ -220,7 +230,7 @@ def mcmc_corner_plot_ptmcmc(outfile,labels,ndim,pixelnr=1):
 
         myrange += myrange_tau
 
-    chain = np.loadtxt('./chains'+pixelnr+'/chain_1.txt')
+    chain = np.loadtxt(Path('./chains' + str(pixelnr)) / 'chain_1.txt')
     # the last 4 columns are:
     # lnprob, lnlike, naccepted/iter, pt_acc
 
@@ -292,6 +302,7 @@ def mcmc_corner_plot_ptmcmc(outfile,labels,ndim,pixelnr=1):
 
         # save corner plot
         figure.savefig(outfile,bbox_inches='tight')
+        plt.close(figure)
 
         samples_n=samples[:,0]
         samples_T=samples[:,1]

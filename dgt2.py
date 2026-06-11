@@ -8,20 +8,28 @@
 # The main result is a new table, e.g. 'ascii_galaxy_nT.txt'.
 ######################################################################################
 
+import importlib.util
 import os
+import sys
+import urllib.request
 from pathlib import Path
+
 import numpy as np
 import numpy.ma as ma
 import matplotlib as mpl
+
+# Use a non-interactive backend by default so plot generation also works on
+# headless servers and in Python >= 3.12 environments without tkinter.
+if os.environ.get("MPLBACKEND") is None:
+    mpl.use("Agg")
+
 import matplotlib.pyplot as plt
 import pandas as pd
 import re
-from pathlib import Path
 from matplotlib import rc
 from scipy.interpolate import Rbf
 from scipy.stats import chi2 as scipychi2
 from scipy.spatial import distance
-from pylab import *
 from read_grid_ndist2 import read_grid_ndist,linename_obs2mdl,linename_mdl2obs
 import mcmc
 from datetime import datetime
@@ -29,7 +37,6 @@ import warnings
 from mcmc_corner_plot2 import mcmc_corner_plot, mcmc_corner_plot_ptmcmc
 import emcee
 
-mpl.use("TkAgg")
 
 cmap='cubehelix'
 
@@ -217,34 +224,48 @@ def read_obs(filename,valid_lines):
 
 ##################################################################
 
-def write_result(result,outfile,domcmc):
-    result=np.array(result,dtype=object)
+def _clean_result_text(text):
+    """Replicate the historical sed cleanup without shelling out."""
+    return (
+        text.replace("', '", "|")
+            .replace("'", "")
+            .replace("[", "")
+            .replace("]", "")
+    )
 
-    tmpoutfile=outfile+'.tmp'
+
+def write_result(result, outfile, domcmc):
+    result = np.array(result, dtype=object)
+    outfile = Path(outfile)
+    outfile.parent.mkdir(parents=True, exist_ok=True)
+    tmpoutfile = outfile.with_suffix(outfile.suffix + '.tmp')
 
     # extract the results
-    r=result.transpose()
+    r = result.transpose()
 
     if not domcmc:
-        pixid,ra,de,cnt,dgf,chi2,n,T,width,str_taus,XCO,str_lines=r
-        out=np.column_stack((pixid,ra,de,cnt,dgf,chi2,n,T,width,str_taus,XCO,str_lines))
-        np.savetxt(tmpoutfile,out,\
-            fmt="%d\t%.8f\t%.8f\t%d\t%d\t%.4f\t%.2f\t%.2f\t%.2f\t%s\t%.4f\t%s", \
-            header="ID\tRA\tDEC\tcnt\tdgf\tchi2\tlog_n\tT\twidth\ttau_lines\tXCO_19\tlines_obs")
+        pixid, ra, de, cnt, dgf, chi2, n, T, width, str_taus, XCO, str_lines = r
+        out = np.column_stack((pixid, ra, de, cnt, dgf, chi2, n, T, width, str_taus, XCO, str_lines))
+        np.savetxt(
+            tmpoutfile,
+            out,
+            fmt="%d\t%.8f\t%.8f\t%d\t%d\t%.4f\t%.2f\t%.2f\t%.2f\t%s\t%.4f\t%s",
+            header="ID\tRA\tDEC\tcnt\tdgf\tchi2\tlog_n\tT\twidth\ttau_lines\tXCO_19\tlines_obs",
+        )
     else:
-        pixid,ra,de,cnt,dgf,chi2,n,n_up,n_lo,T,T_up,T_lo,width,width_up,width_lo,str_taus,XCO,str_lines=r
-        out=np.column_stack((pixid,ra,de,cnt,dgf,chi2,n,n_up,n_lo,T,T_up,T_lo,width,width_up,width_lo,str_taus,XCO,str_lines))
-        np.savetxt(tmpoutfile,out,\
-            fmt="%d\t%.8f\t%.8f\t%d\t%d\t%.4f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%s\t%.4f\t%s", \
-            header="ID\tRA\tDEC\tcnt\tdgf\tchi2\tlog_n\te_n1\te_n2\tT\te_T1\te_T2\twidth\te_width1\te_width2\ttau_lines\tXCO_19\tlines_obs")
+        pixid, ra, de, cnt, dgf, chi2, n, n_up, n_lo, T, T_up, T_lo, width, width_up, width_lo, str_taus, XCO, str_lines = r
+        out = np.column_stack((pixid, ra, de, cnt, dgf, chi2, n, n_up, n_lo, T, T_up, T_lo, width, width_up, width_lo, str_taus, XCO, str_lines))
+        np.savetxt(
+            tmpoutfile,
+            out,
+            fmt="%d\t%.8f\t%.8f\t%d\t%d\t%.4f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%.2f\t%s\t%.4f\t%s",
+            header="ID\tRA\tDEC\tcnt\tdgf\tchi2\tlog_n\te_n1\te_n2\tT\te_T1\te_T2\twidth\te_width1\te_width2\ttau_lines\tXCO_19\tlines_obs",
+        )
 
-    # clean up
-    #replacecmd="sed -e\"s/', '/|/g;s/'//g;s/\[//g;s/\]//g\""
-    replacecmd = "sed -e\"s/', '/|/g;s/'//g;s/\\[//g;s/\\]//g\""
-    os.system("cat "+tmpoutfile + "| "+ replacecmd + " > " + outfile)
-    os.system("rm -rf "+tmpoutfile)
+    outfile.write_text(_clean_result_text(tmpoutfile.read_text()))
+    tmpoutfile.unlink(missing_ok=True)
 
-    return 
+    return
 
 ##################################################################
 
@@ -322,7 +343,7 @@ def makeplot(x,y,z,this_slice,this_bestval,xlabel,ylabel,zlabel,title,pngoutfile
         #####################################
 
         fig.subplots_adjust(left=0.13, bottom=0.12, right=0.93, top=0.94, wspace=0, hspace=0)
-        fig = gcf()
+        fig = plt.gcf()
 
         fig.suptitle(title, fontsize=18, y=0.99)
 
@@ -347,12 +368,39 @@ def makeplot(x,y,z,this_slice,this_bestval,xlabel,ylabel,zlabel,title,pngoutfile
 ##################################################################
 ##################################################################
 
+def ensure_model_config(type_of_models):
+    """Ensure that models_<type>/dgt_config.py exists before importing it.
+
+    The original code imports the config before the model grid is read, so a
+    fresh checkout without a local models_* directory would fail before the
+    automatic model download logic can run.
+    """
+    model_dir = Path(f'./models_{type_of_models}')
+    model_dir.mkdir(parents=True, exist_ok=True)
+    config_file = model_dir / 'dgt_config.py'
+
+    if config_file.exists():
+        return config_file
+
+    url = f'https://www.jpuschnig.com/dgt/models_{type_of_models}/dgt_config.py'
+    print(f"[INFO] Downloading model config {url} to {config_file}")
+    try:
+        urllib.request.urlretrieve(url, config_file)
+    except Exception as exc:
+        raise FileNotFoundError(
+            f"Could not find or download {config_file}. Please place the matching "
+            f"dgt_config.py file in {model_dir} manually. Original error: {exc}"
+        ) from exc
+
+    return config_file
+
+
 def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,domcmc,use_pt,nsteps,type_of_models,usecsv,n_cpus=1,do_model_test=False):
 
     interp=False    # interpolate loglike on model grid (for mcmc sampler)
 
     # import dgt_config.py as conf using importlib
-    dgt_config_file='./models_'+type_of_models+'/dgt_config.py'
+    dgt_config_file = ensure_model_config(type_of_models)
     spec = importlib.util.spec_from_file_location("conf", dgt_config_file)
     conf = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(conf)
@@ -368,7 +416,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
         userinputOK=False
         print("!!! User input (temperature or width) invalid. Exiting.")
         print("!!!")
-        exit()
+        sys.exit(1)
 
     # Valid (i.e. modeled) input molecular lines are:
     valid_lines=conf.valid_lines
@@ -377,7 +425,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
         print("!!! Line for SNR limit is invalid. Must be one of:")
         print(valid_lines)
         print("!!!")
-        exit()
+        sys.exit(1)
 
     ###########################
     ### get observations ######
@@ -428,7 +476,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
         print("!!!")
         print("!!! No coordinates found in input ascii file. Check column header for 'RA' and 'DEC'. Exiting.")
         print("!!!")
-        exit()
+        sys.exit(1)
 
         
     # count number of lines in input data
@@ -494,11 +542,11 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
     if not dgf>0:
         print("[ERROR] Number of observed lines too low. Degrees of Freedom <1. Try a fixed temperature or check column header. Valid lines are: ")
         print(valid_lines)
-        exit()
+        sys.exit(1)
 
     if not ct_t==ct_l and not TauIsFree:
         print("[ERROR] Tau value is missing for some line(s). Exiting. ")
-        exit()
+        sys.exit(1)
 
 
     if have_ra_special:
@@ -530,7 +578,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
     elif have_co43: normtrans='CO43'; uc_normtrans='UC_CO43'
     else:
         print("[ERROR] No CO line found in input data file. Check column headers for 'CO10', 'CO21', 'CO32' or 'CO43'. Exiting.")
-        exit()
+        sys.exit(1)
 
 
 
@@ -813,8 +861,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
                 print("[INFO] Preparing MCMC for pixel "+str(pixnr))
  
                 #### Create directory for output png files ###
-                if not os.path.exists('./results2/'):
-                    os.makedirs('./results2/')
+                Path('./results2/').mkdir(parents=True, exist_ok=True)
 
                 if TauIsFree:
                     ndim, nwalkers = 3+len(tau), 3*(3+len(tau))
@@ -984,8 +1031,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
         if SNR>snr_lim and plotting==True and bestn>0 and do_this_plot:
 
             #### Create directory for output png files ###
-            if not os.path.exists('./results2/'):
-                os.makedirs('./results2/')
+            Path('./results2/').mkdir(parents=True, exist_ok=True)
 
             # zoom-in variables
             idx=np.where(chi2<bestchi2+deltachi2_fixed)
@@ -1020,7 +1066,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
  
             # plot
             fig.subplots_adjust(left=0.06, bottom=0.06, right=1, top=0.96, wspace=0.04, hspace=0.04)
-            fig = gcf()
+            fig = plt.gcf()
             fig.suptitle('Pixel: ('+str(pixnr)+') SNR('+snr_line+'): '+str(SNR), fontsize=14, y=0.99) 
             chi2_filename=obsdata_file[:-4]+"_"+str(pixnr)+'_chi2.png'
             fig.savefig('./results2/'+chi2_filename) 
@@ -1122,7 +1168,7 @@ def tau_error(valid_lines,valid_taus):
     print("!!! Valid Taus are: ",valid_taus)
     print("!!!")
  
-    exit()
+    sys.exit(1)
 
 ##################################################################################
 ##################################################################################

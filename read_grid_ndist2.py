@@ -1,21 +1,30 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+import shutil
+import sys
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import os
 import psutil
 import requests
 import glob
-import dask.dataframe as dd
-from dask import delayed
+
+try:
+    import dask.dataframe as dd
+    from dask import delayed
+except ImportError:  # Dask is useful for large grids but not required for CSV/small-grid use.
+    dd = None
+    delayed = None
 
 ############################################################
 
 # Function to check free space on the disk
-def check_free_space():
-    # Get disk usage statistics
-    disk_usage = psutil.disk_usage('/')
+def check_free_space(path='.'):
+    # Get disk usage statistics for the filesystem that will hold the model file.
+    disk_usage = psutil.disk_usage(path)
     # Convert free space from bytes to GB
     free_space_gb = disk_usage.free / (1024 ** 3)
     return free_space_gb
@@ -24,60 +33,84 @@ def check_free_space():
 
 # Function to download a file
 def download_file(url, local_path, model_size_gb):
+    local_path = Path(local_path)
     # Check if the file already exists
-    if os.path.exists(local_path):
+    if local_path.exists():
         print(f"File {local_path} already exists. Skipping download.")
-        pass
-    else:
-        free_space_gb = check_free_space()
+        return
 
-        if free_space_gb < model_size_gb and "emissivities" in local_path:
-            print(f"Warning: Not enough disk space. Available: {free_space_gb:.2f} GB, Required: {model_size_gb} GB")
-            exit()
-        else:
-            # Download the file
-            print(f"Downloading {url} to {local_path}...")
-            response = requests.get(url)
-            with open(local_path, 'wb') as file:
-                file.write(response.content)
-            print(f"Downloaded {local_path}")
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    free_space_gb = check_free_space(local_path.parent if local_path.parent != Path('') else '.')
+
+    if free_space_gb < model_size_gb and "emissivities" in str(local_path):
+        raise RuntimeError(
+            f"Not enough disk space. Available: {free_space_gb:.2f} GB, "
+            f"required: {model_size_gb} GB"
+        )
+
+    tmp_path = local_path.with_suffix(local_path.suffix + '.download')
+
+    print(f"Downloading {url} to {local_path}...")
+    with requests.get(url, stream=True, timeout=(30, 300)) as response:
+        response.raise_for_status()
+        with tmp_path.open('wb') as file:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    file.write(chunk)
+    tmp_path.replace(local_path)
+    print(f"Downloaded {local_path}")
 
 def ensure_directory_exists(directory_path):
-    if not os.path.exists(directory_path):
-        os.makedirs(directory_path)
+    directory_path = Path(directory_path)
+    if not directory_path.exists():
+        directory_path.mkdir(parents=True, exist_ok=True)
         print(f"Directory {directory_path} created.")
 
 ############################################################
 
-def read_and_save_chunks(pklfile, chunk_size=10000, chunk_prefix='chunk_'):
-    pk = open(pklfile, 'rb')
+def read_and_save_chunks(pklfile, chunk_size=10000, chunk_prefix='chunk_', tmp_dir='tmp'):
+    tmp_dir = Path(tmp_dir)
+    if tmp_dir.exists():
+        shutil.rmtree(tmp_dir)
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+
     n = 0
     chunk_index = 0
-    while True:
-        try:
+    with open(pklfile, 'rb') as pk:
+        while True:
             chunk = []
-            for _ in range(chunk_size):
-                a = pd.read_pickle(pk)
-                chunk.append(a)
-                n += 1
-                print(f"[INFO] Reading model groups (n,T,width fixed per group) {n}", end='\r')
-            chunk_df = pd.concat(chunk, ignore_index=True)
-            chunk_filename = f'tmp/{chunk_prefix}{chunk_index}.pkl'
-            chunk_df.to_pickle(chunk_filename)
-            chunk_index += 1
-        except EOFError:
+            try:
+                for _ in range(chunk_size):
+                    a = pd.read_pickle(pk)
+                    chunk.append(a)
+                    n += 1
+                    print(f"[INFO] Reading model groups (n,T,width fixed per group) {n}", end='\r')
+            except EOFError:
+                pass
+
             if chunk:
                 chunk_df = pd.concat(chunk, ignore_index=True)
-                chunk_filename = f'tmp/{chunk_prefix}{chunk_index}.pkl'
+                chunk_filename = tmp_dir / f'{chunk_prefix}{chunk_index}.pkl'
                 chunk_df.to_pickle(chunk_filename)
-            print()
-            break
+                chunk_index += 1
+
+            if len(chunk) < chunk_size:
+                print()
+                break
 
 def load_pickle(file):
     return pd.read_pickle(file)
 
-def concatenate_chunks_dask(chunk_prefix='chunk_'):
-    chunk_files = glob.glob(f'tmp/{chunk_prefix}*.pkl')
+def concatenate_chunks_dask(chunk_prefix='chunk_', tmp_dir='tmp'):
+    chunk_files = sorted(glob.glob(str(Path(tmp_dir) / f'{chunk_prefix}*.pkl')))
+    if not chunk_files:
+        raise RuntimeError(f"No chunk files found in {tmp_dir!r} with prefix {chunk_prefix!r}")
+
+    if dd is None or delayed is None:
+        # Fallback for installations without dask. This may require more RAM,
+        # but avoids import-time crashes when dask is not installed.
+        return pd.concat((load_pickle(file) for file in chunk_files), ignore_index=True)
+
     delayed_dfs = [delayed(load_pickle)(file) for file in chunk_files]
     ddf = dd.from_delayed(delayed_dfs)
     result = ddf.compute()
@@ -85,18 +118,17 @@ def concatenate_chunks_dask(chunk_prefix='chunk_'):
 
 def read_stream_old(pklfile):
     objs = []
-    pk = open(pklfile, 'rb')
-    n=0
-    while 1:
-        try:
-            #objs.append(pkl.load(pk))
-            a = pd.read_pickle(pk)
-            objs.append(a)
-            n+=1
-            print("[INFO] Reading model groups (n,T,width fixed per group) "+str(n),end='\r')
-        except EOFError:
-            print()
-            break
+    n = 0
+    with open(pklfile, 'rb') as pk:
+        while True:
+            try:
+                a = pd.read_pickle(pk)
+                objs.append(a)
+                n += 1
+                print("[INFO] Reading model groups (n,T,width fixed per group) " + str(n), end='\r')
+            except EOFError:
+                print()
+                break
 
     return objs
 
@@ -162,7 +194,7 @@ def read_grid_ndist(transition,usertkin,userwidth,usertau,powerlaw,type_of_model
     mdlcols=['n_mean','n_mean_mass','tkin','width','fdense_thresh','fdense_pl','pl']
     keepcols=userlines+mdlcols
 
-    for kk in grid.keys():
+    for kk in list(grid.keys()):
         if kk[0:3]!='tau' and kk not in keepcols:
             #print("Removing column "+str(kk))
             del grid[kk]
@@ -211,7 +243,7 @@ def read_grid_ndist(transition,usertkin,userwidth,usertau,powerlaw,type_of_model
     # combine masks and apply
     mask=np.logical_and(mask_w,np.logical_and(mask_T,mask_tau))
 
-    g=grid[mask].reset_index()
+    g=grid[mask].reset_index(drop=True)
 
     g['n_mean']=np.log10(g['n_mean'])
     g['n_mean_mass']=np.log10(g['n_mean_mass'])
