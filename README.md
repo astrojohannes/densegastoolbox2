@@ -4,23 +4,15 @@ Created by Johannes Puschnig
 www.jpuschnig.com
 
 # Aim
-Calculate density and temperature from observed molecular emission lines,
-using radiative transfer models.
+Calculate density, temperature and line optical depths from observed molecular emission lines, using radiative transfer model grids.
 
 # Method
-Our models assume that the molecular emission lines emerge from a
-multi-density medium rather than from a single density alone.
-The density distribution is assumed to be log-normal or log-normal with
-a power-law tail.
-The parameters (density, temperature, width of density distribution and line optical depths)
-are inferred using Bayesian statistics, i.e. Markov chain Monte Carlo (MCMC).
+The Dense Gas Toolbox is based on the assumption that molecular emission lines emerge from a multi-density medium rather than from gas at a single density alone. The gas density distribution is described either by a log-normal distribution or by a log-normal distribution with an additional power-law tail.
+
+The physical parameters are inferred by comparing observed molecular line intensities and line ratios to pre-computed radiative transfer model grids. The inferred parameters include the mass-weighted mean density, gas temperature, the width of the density distribution, and, starting with version 2, the optical depths of the observed molecular lines. The parameter inference can be performed using Bayesian statistics, i.e. Markov chain Monte Carlo (MCMC).
 
 # Results
-Given an ascii table of observed molecular intensities [K km/s],
-the results (mass-weighted mean density, temperature, width of the density
-distribution and line optical depths) are saved in an output ascii file.
-Furthermore, diagnostic plots are created to assess the quality of the
-fit/derived parameters.
+Given an ASCII table of observed molecular intensities in units of K km/s, the Dense Gas Toolbox saves the inferred physical parameters to an output ASCII file. These include the mass-weighted mean density, gas temperature, width of the density distribution, and, for version 2 model grids, the line optical depths. Furthermore, diagnostic plots are created to assess the quality of the fit and the robustness of the derived parameters.
 
 ---
 
