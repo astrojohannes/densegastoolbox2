@@ -64,7 +64,7 @@ if __name__ == "__main__":
     T=0                                     # gas temperature; use T=0 to leave as free parameter
                                             # must be one of: 10,15,20,25,30
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
-    W=0.4                                     # with of density distribution in dex; use W=0 to leave as free parameter
+    W=0                                     # with of density distribution in dex; use W=0 to leave as free parameter
                                             # must be one of: 0.2,0.4,0.6,0.8
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
                                             # Models will be downloaded upon usage (note large file size)
@@ -112,14 +112,14 @@ if __name__ == "__main__":
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     snr_line='13CO10'                       # only use data above SNR cut in given line, should be faintest line
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
-    snr_lim=5                               # this is the corresponding SNR cut
+    snr_lim=3                               # this is the corresponding SNR cut
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
     plotting=True                           # create plots
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     domcmc=True                             # use MCMC for parameter estimation; this is recommended, but may take very long
     use_pt=False                            # if True, the PTMCMC Sampler is used instead of emcee
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
-    nsims=10000                             # number of MCMC simulations to perform (should be >1000, better even more)
+    nsims=5000                              # number of MCMC simulations to perform (should be >1000, better even more)
     n_cpus = 6                              # Upper limit for number of cpus used for MCMC 
     #######################################################################################################
 

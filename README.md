@@ -18,6 +18,32 @@ Given an ASCII table of observed molecular intensities in units of K km/s, the D
 
 # VERSION HISTORY
 
+- Jun 12, 2026 | Version 2.2
+
+    * Added RAM-aware model-grid loading for large pickle files
+
+    * Model grids are now reduced earlier to the requested transitions, temperature, width, and tau constraints
+
+    * Temporary reduced chunks are written during loading to reduce peak memory usage
+
+    * Added clearer RAM and disk-space checks for large model files
+
+    * Improved robustness of model downloads
+
+    * Added optional SHA256 verification for downloaded model files
+
+    * tau_fiducial(type_of_models) now returns fiducial tau values matching the selected model grid
+
+    * Updated the example script to use fixed fiducial tau values by default.
+
+    * Improved compatibility with historical DGT v1.x fiducial-tau results
+
+    * Increased the initial MCMC burn-in phase for improved walker stability
+
+    * Disabled do_model_test by default in the example script
+
+    * Included updates to test input and example data
+
 - Jun 11, 2026 | Version 2.1
 
     * Updated the code base for compatibility with Python 3.12 and Python 3.13.
