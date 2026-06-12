@@ -70,69 +70,173 @@ mpl.rcParams['ytick.right'] = True
 
 ##################################################################
 
+def _choose_representative_values(values, preferred_values=None, max_values=3):
+    """Return a small, stable set of representative values from an array.
+
+    The model grid may already be down-selected to a fixed T or width.  In that
+    case hard-coded test values such as T=[10,30] can produce zero synthetic
+    rows.  This helper chooses preferred values when present and otherwise falls
+    back to first/middle/last values from the actually loaded grid.
+    """
+    arr = np.asarray(values, dtype=np.float64)
+    arr = arr[np.isfinite(arr)]
+    if arr.size == 0:
+        return []
+
+    unique = np.unique(arr)
+    chosen = []
+
+    if preferred_values is not None:
+        for val in preferred_values:
+            matches = unique[np.isclose(unique, float(val), atol=1e-8)]
+            if matches.size:
+                chosen.append(float(matches[0]))
+
+    if not chosen:
+        if unique.size <= max_values:
+            chosen = [float(x) for x in unique]
+        else:
+            idx = np.linspace(0, unique.size - 1, max_values).round().astype(int)
+            chosen = [float(unique[i]) for i in idx]
+
+    # Preserve order and remove duplicates.
+    return list(dict.fromkeys(chosen))
+
+
+def _closest_grid_value(values, target):
+    """Return the closest available value to *target* from *values*."""
+    arr = np.asarray(values, dtype=np.float64)
+    arr = arr[np.isfinite(arr)]
+    if arr.size == 0:
+        return None
+
+    unique = np.unique(arr)
+    exact = unique[np.isclose(unique, float(target), atol=1e-8)]
+    if exact.size:
+        return float(exact[0])
+
+    return float(unique[np.argmin(np.abs(unique - float(target)))])
+
+
 def generate_synthetic_obs(mdl, obstrans, normtrans, species):
     """
-    Generate synthetic observations based on model grid.
+    Generate synthetic observations based on the already loaded model grid.
+
+    Older versions used hard-coded test values, e.g. T=[10,30] and
+    W=[0.2,0.4,0.8].  This fails when the grid has already been down-selected
+    to a fixed value such as T=20.  The implementation below first tries a
+    small, representative set of values from the actual grid and falls back to
+    representative rows if no exact combination is found.
     """
-    synthetic_obs = {}
+    if mdl is None or len(mdl) == 0:
+        raise RuntimeError(
+            "Cannot generate synthetic observations because the loaded model grid is empty."
+        )
 
-    # Select a range of parameter values
-    grid_n = 1.9 + np.arange(32) * 0.1
-    test_n = [grid_n[3], grid_n[15], grid_n[-1]]  # Low, mid, high
-    test_T = [10, 30]  # Low, high
-    test_W = [0.2, 0.4, 0.8]  # Low, mid, high
+    required_model_cols = [linename_obs2mdl(t) for t in obstrans]
+    missing_cols = [col for col in required_model_cols if col not in mdl.columns]
+    if missing_cols:
+        raise RuntimeError(
+            "Cannot generate synthetic observations because model columns are missing: "
+            + ", ".join(missing_cols)
+        )
 
-    # Tau configuration
-    test_tau = {}
+    # Prefer historical test values when available, but use values from the
+    # current reduced grid when the user fixed T/width before loading.
+    test_n = _choose_representative_values(
+        mdl["n_mean"].to_numpy(),
+        preferred_values=[1.9 + 3 * 0.1, 1.9 + 15 * 0.1, 1.9 + 31 * 0.1],
+        max_values=3,
+    )
+    test_T = _choose_representative_values(
+        mdl["tkin"].to_numpy(),
+        preferred_values=[10, 20, 30],
+        max_values=3,
+    )
+    test_W = _choose_representative_values(
+        mdl["width"].to_numpy(),
+        preferred_values=[0.2, 0.4, 0.8],
+        max_values=3,
+    )
+
+    # Tau configuration used for the model test.  If an exact value is not in
+    # the reduced grid, use the closest available value instead of producing no
+    # synthetic rows.
+    desired_tau = {}
     for lbl in species:
         if lbl.startswith("CO"):
-            test_tau["tau_12co"] = 6.5
+            desired_tau["tau_12co"] = 6.5
         elif lbl.startswith("C18O"):
-            test_tau["tau_c18o"] = 0.1
+            desired_tau["tau_c18o"] = 0.1
         elif lbl.startswith("C17O"):
-            test_tau["tau_c17o"] = 0.2
+            desired_tau["tau_c17o"] = 0.2
         elif lbl.startswith("13CO"):
-            test_tau["tau_13co"] = 0.3
+            desired_tau["tau_13co"] = 0.3
         else:
-            this_lbl = "tau_"+lbl.lower()
-            test_tau[this_lbl] =  1.5
+            desired_tau["tau_" + lbl.lower()] = 1.5
 
-    # Generate synthetic observations
+    test_tau = {}
+    for tau_col, tau_target in desired_tau.items():
+        if tau_col in mdl.columns:
+            tau_val = _closest_grid_value(mdl[tau_col].to_numpy(), tau_target)
+            if tau_val is not None:
+                test_tau[tau_col] = tau_val
+
+    print(
+        "[INFO] Synthetic model-test selection: "
+        f"n={test_n}, T={test_T}, width={test_W}, tau={test_tau}"
+    )
+
     matching_rows = []
     for n_val in test_n:
         for T_val in test_T:
             for W_val in test_W:
-
-                # Filter mdl to select all matching rows
                 filtered_mdl = mdl[
-                    np.isclose(mdl["n_mean"], n_val, atol=1e-5) &
-                    (mdl["tkin"] == T_val) &
-                    (mdl["width"] == W_val)
+                    np.isclose(mdl["n_mean"], n_val, atol=1e-5)
+                    & np.isclose(mdl["tkin"], T_val, atol=1e-8)
+                    & np.isclose(mdl["width"], W_val, atol=1e-8)
                 ]
 
-                for tau,val in test_tau.items():
+                for tau_col, tau_val in test_tau.items():
+                    if tau_col in filtered_mdl.columns:
+                        filtered_mdl = filtered_mdl[
+                            np.isclose(filtered_mdl[tau_col], tau_val, atol=1e-8)
+                        ]
 
-                    filtered_mdl = filtered_mdl[filtered_mdl[tau] == val]
+                if len(filtered_mdl) > 0:
+                    matching_rows.append(filtered_mdl)
 
-                # Append the matching rows to the list
-                matching_rows.append(filtered_mdl)
+    if matching_rows:
+        df = pd.concat(matching_rows, ignore_index=True)
+    else:
+        print(
+            "[WARN] No exact synthetic model-test rows found. "
+            "Falling back to representative rows from the loaded model grid."
+        )
+        nrows = min(18, len(mdl))
+        if nrows <= 0:
+            raise RuntimeError(
+                "Cannot generate synthetic observations: model grid has zero rows."
+            )
+        idx = np.linspace(0, len(mdl) - 1, nrows).round().astype(int)
+        df = mdl.iloc[idx].copy().reset_index(drop=True)
 
-    # Combine all matching rows into a single DataFrame
-    df = pd.concat(matching_rows, ignore_index=True)
-
+    # Rename model columns to observed-line column names.
     for t in obstrans:
         t_mdl = linename_obs2mdl(t)
         df = df.rename(columns={t_mdl: t})
 
-    for t in obstrans: 
-        df["UC_"+t]=df[t]/1000.0   # SNR of 1000
-    df["UC_"+normtrans]=df[normtrans]/1000.0
+    for t in obstrans:
+        df["UC_" + t] = df[t] / 1000.0  # SNR of 1000
 
+    df["UC_" + normtrans] = df[normtrans] / 1000.0
 
-    df['RA'] = [1.0 * i for i in range(len(df['tkin']))]
-    df['DEC'] = [1.0 * i for i in range(len(df['tkin']))]
+    df["RA"] = [1.0 * i for i in range(len(df))]
+    df["DEC"] = [1.0 * i for i in range(len(df))]
 
+    print(f"[INFO] Synthetic observation table contains {len(df)} rows.")
     return df
+
 
 ##################################################################
 
@@ -158,6 +262,24 @@ def scalar(array):
         return array.item()
     else:
         return array[0].item()
+
+
+def mcmc_placeholder_result(pixnr, ra, de, p, ct_l, dgf, obstrans):
+    """Return a placeholder row matching the MCMC output column layout."""
+    return [
+        pixnr,
+        ra[p],
+        de[p],
+        ct_l,
+        dgf,
+        -99999.9,  # chi2
+        -99999.9, -99999.9, -99999.9,  # n, n_up, n_lo
+        -99999.9, -99999.9, -99999.9,  # T, T_up, T_lo
+        -99999.9, -99999.9, -99999.9,  # width, width_up, width_lo
+        "-99999.9",  # tau list
+        -99999.9,    # XCO
+        obstrans,
+    ]
 
 ##################################################################
 
@@ -235,6 +357,15 @@ def _clean_result_text(text):
 
 
 def write_result(result, outfile, domcmc):
+    if result is None or len(result) == 0:
+        raise RuntimeError(
+            "No result rows were generated. This usually means that no pixels "
+            "passed the SNR/best-fit checks, or that do_model_test=True did not "
+            "produce usable synthetic observations. Check the log messages for "
+            "'Synthetic observations generated', 'Minimum reduced chi2', "
+            "'SNR too low', and 'log-likelihood could not be constrained'."
+        )
+
     result = np.array(result, dtype=object)
     outfile = Path(outfile)
     outfile.parent.mkdir(parents=True, exist_ok=True)
@@ -616,6 +747,11 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
         de=np.array(obs['DEC'])
         pixels = len(ra)
         print(f"[INFO] Synthetic observations generated with {pixels} rows.")
+        if pixels == 0:
+            raise RuntimeError(
+                "Synthetic model test generated zero rows after selecting from "
+                "the loaded model grid. Check T, width, tau and transition settings."
+            )
 
         if DEBUG:
             print("SYNTHETIC OBSERVATIONS FROM MODEL FILE")
@@ -1014,13 +1150,20 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
                     print("###############################################################")
                     print()
 
-            elif SNR<snr_lim:
-                print("[INFO] Skipping pixel id "+str(pixnr)+", because SNR for line " +str(snr_line) + " is lower than user constraint.")
-                do_this_plot=False
+            elif SNR < snr_lim:
+                print("[INFO] Skipping pixel id " + str(pixnr) + ", because SNR for line " + str(snr_line) + " is lower than user constraint.")
+                result.append(mcmc_placeholder_result(pixnr, ra, de, p, ct_l, dgf, obstrans))
+                do_this_plot = False
 
-            elif bestn<=0:
-                print("[INFO] Skipping pixel id "+str(pixnr)+", because log-likelihood could not be constrained from chi2.")
-                do_this_plot=False
+            elif bestn <= 0:
+                print("[INFO] Skipping pixel id " + str(pixnr) + ", because log-likelihood could not be constrained from chi2.")
+                result.append(mcmc_placeholder_result(pixnr, ra, de, p, ct_l, dgf, obstrans))
+                do_this_plot = False
+
+            else:
+                print("[INFO] Skipping pixel id " + str(pixnr) + ", because it did not pass the MCMC selection criteria.")
+                result.append(mcmc_placeholder_result(pixnr, ra, de, p, ct_l, dgf, obstrans))
+                do_this_plot = False
 
 
         ############################################

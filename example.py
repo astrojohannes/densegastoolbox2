@@ -14,7 +14,7 @@ if __name__ == "__main__":
     ##############################################################
     #################### USER INPUT BELOW ########################
     ##############################################################
-    obsdata_file = 'ascii_test.txt'    # table of observed intensities in Tmb [K km/s]
+    obsdata_file = 'ascii_galaxy.txt'    # table of observed intensities in Tmb [K km/s]
     #
     ###################################
     # Note that the input file (obsdata_file) must have a 1-line
@@ -47,9 +47,16 @@ if __name__ == "__main__":
     # ###################################### User INPUT Parameters ########################################
     # #####################################################################################################
     #
-    # Test parameter inferral based on transitions found in the
-    # user input file (obsdata_file) but use model intensities
-    do_model_test=True                      # If True, this will force to run MCMC mode
+    do_model_test=False # If do_model_test=True, the input ASCII file is only used to determine which
+                        # molecular transitions are available. The actual "observations" are then
+                        # replaced by synthetic line intensities generated directly from the loaded
+                        # model grid.
+                        #
+                        # This is useful for debugging and validation: the code tests whether the
+                        # parameter inference can recover known model-grid parameters from synthetic
+                        # data. For normal analysis of real observational data, set this to False.
+                        #
+                        # Note: enabling this option forces the code to run in MCMC mode.
     #
     #######################################################################################################
     powerlaw=True                           # logNorm or logNorm+PL density distribution
@@ -102,7 +109,7 @@ if __name__ == "__main__":
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     snr_line='CO10'                         # only use data above SNR cut in given line, should be faintest line
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
-    snr_lim=0                               # this is the corresponding SNR cut
+    snr_lim=1                               # this is the corresponding SNR cut
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
     plotting=True                           # create plots
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
