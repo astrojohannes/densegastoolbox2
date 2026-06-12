@@ -2,7 +2,7 @@
 
 import sys
 
-from dgt2 import dgt
+from dgt2 import dgt, tau_fiducial
 
 if __name__ == "__main__":
 
@@ -64,13 +64,13 @@ if __name__ == "__main__":
     T=0                                     # gas temperature; use T=0 to leave as free parameter
                                             # must be one of: 10,15,20,25,30
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
-    W=0                                     # with of density distribution in dex; use W=0 to leave as free parameter
+    W=0.4                                     # with of density distribution in dex; use W=0 to leave as free parameter
                                             # must be one of: 0.2,0.4,0.6,0.8
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
                                             # Models will be downloaded upon usage (note large file size)
                                             # see README_models.md
                                             #
-    type_of_models='co'                     # which models to use (one of: std, std43, std43_incl_HNC_excl_C18O, co, coarse)
+    type_of_models='std'                    # which models to use (one of: std, std43, std43_incl_HNC_excl_C18O, co, coarse)
                                             # std (up to 3-2): 2 x 35GB
                                             # std43 (up to 4-3): 2 x 38GB
                                             # std43_incl_HCN_excl_C18O (up to 4-3): 2 x 38GB
@@ -78,10 +78,13 @@ if __name__ == "__main__":
                                             # co (up to 3-2): 2x 10GB
                                             # coarse: currently not available
                                             #
+    check_sha256=False                      # if true, model files will be checked for integrity
+                                            #
     models_from_csv=False                   # in case of problems with unpickling the models, a csv
                                             # version of the models may be used
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    tau=0                                   # line optical depths (for lowest-J transition) of given species
+    tau=tau_fiducial(type_of_models)        # line optical depths (for lowest-J transition) of given species
+
                                             # use tau=0 to leave as free parameter
                                             # or set for all lines using the following syntax:
                                             # ['CO10_6.5','CO21_6.5','CO32_6.5','13CO10_0.2',...]
@@ -104,12 +107,12 @@ if __name__ == "__main__":
                                             # co: [0.1,0.2,0.3] for 13CO and C18O (up to 3-2)
                                             #     [5.0,6.5,8.0] for 12CO (up to 3-2)
                                             #
-                                            # or set tau='tau_fiducial' to use EMPIRE-based fixed optical depths
+                                            # or set tau=tau_fiducial(type_of_models) to use EMPIRE-based fixed optical depths
                                             # this reproduces results from previous old DGT v1.X
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    snr_line='CO10'                         # only use data above SNR cut in given line, should be faintest line
+    snr_line='13CO10'                       # only use data above SNR cut in given line, should be faintest line
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
-    snr_lim=1                               # this is the corresponding SNR cut
+    snr_lim=5                               # this is the corresponding SNR cut
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
     plotting=True                           # create plots
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -117,11 +120,11 @@ if __name__ == "__main__":
     use_pt=False                            # if True, the PTMCMC Sampler is used instead of emcee
     # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% 
     nsims=10000                             # number of MCMC simulations to perform (should be >1000, better even more)
-    n_cpus = 12                             # Upper limit for number of cpus used for MCMC 
+    n_cpus = 6                              # Upper limit for number of cpus used for MCMC 
     #######################################################################################################
 
     # call Dense GasTool box
-    dgt(obsdata_file,powerlaw,T,W,tau,snr_line,snr_lim,plotting,domcmc,use_pt,nsims,type_of_models,models_from_csv,n_cpus,do_model_test)
+    dgt(obsdata_file,powerlaw,T,W,tau,snr_line,snr_lim,plotting,domcmc,use_pt,nsims,type_of_models,models_from_csv,n_cpus,do_model_test,check_sha256)
 
     # exit
     sys.exit(0)

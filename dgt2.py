@@ -526,7 +526,7 @@ def ensure_model_config(type_of_models):
     return config_file
 
 
-def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,domcmc,use_pt,nsteps,type_of_models,usecsv,n_cpus=1,do_model_test=False):
+def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,domcmc,use_pt,nsteps,type_of_models,usecsv,n_cpus=1,do_model_test=False,check_sha256=False):
 
     interp=False    # interpolate loglike on model grid (for mcmc sampler)
 
@@ -717,7 +717,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
     ##### get the models ######
     ###########################
     mdl={}
-    mdl = read_grid_ndist(obstrans,userT,userWidth,mytau,powerlaw,type_of_models,usecsv)
+    mdl = read_grid_ndist(obstrans,userT,userWidth,mytau,powerlaw,type_of_models,usecsv,check_sha256=check_sha256)
     print("[INFO] Grid size: "+str(len(mdl['tkin'])))
 
     if DEBUG:
@@ -846,9 +846,9 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
         width=ma.array(mdl['width'])
         densefrac=ma.array(mdl['fdense_thresh'])
 
-        # filter out large values
-        chi2lowlim,chi2uplim=0,99999999
-        #chi2lowlim,chi2uplim=np.quantile(chi2,[0.0,0.95])
+        # filter out top 5 percent in chi2
+        #chi2lowlim,chi2uplim=0,99999999
+        chi2lowlim,chi2uplim=np.quantile(chi2,[0.0,0.95])
 
         # create masks
         # invalid (nan) values of chi2
@@ -1014,7 +1014,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
                         labels.append(ss)
                 
                 grid_theta = np.array(grid_theta,dtype=np.float64)
-                grid_loglike  = -0.5 * chi2
+                grid_loglike  = -0.5 * 10**chi2
 
                 if DEBUG:
                     print("LOGLIKE")
@@ -1029,7 +1029,7 @@ def dgt(obsdata_file,powerlaw,userT,userWidth,userTau,snr_line,snr_lim,plotting,
 
                 # parameters for initial "burn-in" sampling to avoid stuck walkers
                 nreps = 3
-                nsims_burnin = 200
+                nsims_burnin = 500
                                 
                 # set up backend (from dgt v1.7)
                 status_filename = './results2/'+obsdata_file[:-4]+'_mcmc_'+str(pixnr)+'.h5'
@@ -1316,14 +1316,82 @@ def tau_error(valid_lines,valid_taus):
 ##################################################################################
 ##################################################################################
 
-def tau_fiducial():
+def tau_fiducial(model='co'):
+    """
+    Return EMPIRE-based fiducial tau values as used in DGT v1.X.
 
-    return ['CO10_6.5','CO21_6.5','CO32_6.5',\
-            'HCN10_0.8','HCN21_0.8','HCN32_0.8',\
-            'HCOP10_1.5','HCOP21_1.5','HCOP32_1.5',\
-            '13CO10_0.2','13CO21_0.2','13CO32_0.2',\
-            'C18O10_0.1','C18O21_0.1','C18O32_0.1']
-#            'HNC10_0.8','HNC21_0.8','HNC32_0.8',\ 
-#            'C17O10_0.1','C17O21_0.1','C17O32_0.1',\
-#            'CS10_0.8','CS21_0.8','CS32_0.8']
+    Fiducial tau values:
+        12CO:        6.5
+        13CO:        0.2
+        C17O,C18O:   0.1
+        HCN,HNC,CS:  0.8
+        HCOP:        1.5
 
+    Parameters
+    ----------
+    model : str
+        Model grid name. Supported:
+        'co', 'std', 'std43', 'std43_incl_HNC_excl_C18O',
+        'std43_incl_HCN_excl_C18O', 'thick'
+
+    Returns
+    -------
+    list[str]
+        List of strings like 'CO10_6.5', 'HCN21_0.8', ...
+    """
+
+    model = str(model).lower().strip()
+
+    tau_values = {
+        'CO': 6.5,
+        '13CO': 0.2,
+        'C18O': 0.1,
+        'C17O': 0.1,
+        'HCN': 0.8,
+        'HNC': 0.8,
+        'CS': 0.8,
+        'HCOP': 1.5,
+    }
+
+    def make_tau_list(species, max_j=3):
+        result = []
+        for sp in species:
+            for j in range(1, max_j + 1):
+                line = f"{sp}{j}{j-1}"
+                result.append(f"{line}_{tau_values[sp]}")
+        return result
+
+    if model == 'co':
+        species = ['CO', '13CO', 'C18O', 'C17O']
+        return make_tau_list(species, max_j=3)
+
+    elif model == 'std':
+        species = ['CO', 'HCN', 'HCOP', '13CO', 'C18O']
+        return make_tau_list(species, max_j=3)
+
+    elif model == 'std43':
+        species = ['CO', 'HCN', 'HCOP', '13CO', 'C18O']
+        return make_tau_list(species, max_j=4)
+
+    elif model in ['std43_incl_hnc_excl_c18o', 'std43_incl_hcn_excl_c18o']:
+        # Keep both spellings as aliases, because the model name appears
+        # inconsistently in older comments / examples.
+        species = ['CO', 'HCN', 'HCOP', 'HNC', '13CO']
+        return make_tau_list(species, max_j=4)
+
+    elif model == 'thick':
+        species = ['CO', 'HCN', 'HCOP', 'HNC']
+        return make_tau_list(species, max_j=4)
+
+    elif model == 'coarse':
+        raise NotImplementedError(
+            "No fiducial tau list defined for model='coarse'. "
+            "Please define the available species/transitions first."
+        )
+
+    else:
+        raise ValueError(
+            f"Unknown model grid '{model}'. Supported models are: "
+            "'co', 'std', 'std43', 'std43_incl_HNC_excl_C18O', "
+            "'std43_incl_HCN_excl_C18O', 'thick', 'coarse'."
+        )

@@ -33,6 +33,9 @@ import pandas as pd
 import psutil
 import requests
 
+import hashlib
+import time
+
 try:
     # Pandas compatibility unpickler for old pandas pickle objects.
     # Important: we use it at the current file position, never via pd.read_pickle,
@@ -44,7 +47,150 @@ except Exception:
 
 BYTES_PER_GB = 1024 ** 3
 
+MODEL_SHA256 = {
+    "models_co/emissivities_powerlaw.pkl": "eb00e27792a8878b1d8b35a3dbff9e4e9f1399cdb3508a272ec2cad037710a84",
+    "models_co/emissivities.pkl": "57f5cc7a8fe258c07728d0cab800a3530300e6c594a25fe6b14a2d69570ada49",
+    "models_std/emissivities_powerlaw.pkl": "699c17a1d2f5f1fe200be0624c9eacf76ae3acfc40388680dbdb832ef5c70a64",
+    "models_std/emissivities.pkl": "411dec6341825167c0e68e88c839ea6fc43136e624874b9d4cfbb99b4415504f",
+    "models_std43/emissivities_powerlaw.pkl": "1e76b4c6b03c1d0835a75511e4cad54f0e2d2645ed7d165dea4025c9e7a71cbc",
+    "models_std43/emissivities.pkl": "6bbd826e60ba6a3ab60dfde0d969d99abedd4f5b747ea7227ab1cdc029861ae1",
+    "models_std43_incl_HNC_excl_C18O/emissivities_powerlaw.pkl": "54203fd281f538f729a590de00ef3dbe1eb69bf6ce7a818e499580f5e2b32ee4",
+    "models_std43_incl_HNC_excl_C18O/emissivities.pkl": "3c3ab37dec7662cb8e622c8e1cb8c6c2bff4db77b5fc91ea88145547358b8194",
+    "models_thick/emissivities_powerlaw.pkl": "a1c7adf3cd29900cbcbd6f23514563e4493a463c21330d3b7ceb7af6605a9eac",
+    "models_thick/emissivities.pkl": "bd5a7fe4425fe96e2b31fab31a0f9dc30d459f9d15768174d23ac0a4cb90b020",
+}
+
 ############################################################
+
+def sha256_file(path, chunk_size=64 * 1024 * 1024):
+    """
+    Compute SHA256 hash of a file in chunks.
+
+    This is suitable for very large model files because the file is not
+    loaded into memory at once.
+    """
+    path = Path(path)
+    h = hashlib.sha256()
+
+    total_size = path.stat().st_size
+    read_bytes = 0
+    last_report_gb = -1
+
+    with path.open("rb") as f:
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+
+            h.update(chunk)
+            read_bytes += len(chunk)
+
+            current_gb = int(read_bytes / BYTES_PER_GB)
+            if current_gb != last_report_gb:
+                last_report_gb = current_gb
+                print(
+                    f"[INFO] SHA256 progress: "
+                    f"{read_bytes / BYTES_PER_GB:.2f}/"
+                    f"{total_size / BYTES_PER_GB:.2f} GB",
+                    end="\r",
+                    flush=True,
+                )
+
+    print()
+    return h.hexdigest()
+
+
+def _normalise_model_key(path):
+    """
+    Return a stable relative key for MODEL_SHA256 lookup.
+    """
+    p = Path(path)
+    try:
+        p = p.relative_to(Path.cwd())
+    except ValueError:
+        pass
+
+    key = p.as_posix()
+    if key.startswith("./"):
+        key = key[2:]
+
+    return key
+
+
+def _read_sha256_sidecar(local_path):
+    """
+    Read SHA256 from a sidecar file if present.
+
+    Supported sidecar format:
+        <sha256>  <filename>
+
+    as produced by:
+        sha256sum emissivities_powerlaw.pkl > emissivities_powerlaw.pkl.sha256
+    """
+    local_path = Path(local_path)
+    sidecar = local_path.with_suffix(local_path.suffix + ".sha256")
+
+    if not sidecar.exists():
+        return None
+
+    text = sidecar.read_text(encoding="utf-8").strip()
+    if not text:
+        return None
+
+    candidate = text.split()[0].strip()
+
+    if len(candidate) != 64:
+        raise ValueError(
+            f"Invalid SHA256 sidecar file: {sidecar}\n"
+            f"Expected a 64-character SHA256 hash, got: {candidate!r}"
+        )
+
+    return candidate.lower()
+
+
+def expected_sha256_for(local_path):
+    """
+    Return expected SHA256 from either:
+    1. sidecar file: file.pkl.sha256
+    2. MODEL_SHA256 dictionary
+    """
+    local_path = Path(local_path)
+
+    sidecar_hash = _read_sha256_sidecar(local_path)
+    if sidecar_hash:
+        return sidecar_hash
+
+    key = _normalise_model_key(local_path)
+
+    return (
+        MODEL_SHA256.get(key)
+        or MODEL_SHA256.get(str(local_path))
+        or MODEL_SHA256.get(local_path.name)
+    )
+
+
+def _get_remote_file_info(url):
+    """
+    Return remote file size and whether HTTP byte-range resume is supported.
+    """
+    try:
+        response = requests.head(url, allow_redirects=True, timeout=60)
+        response.raise_for_status()
+
+        content_length = response.headers.get("Content-Length")
+        accept_ranges = response.headers.get("Accept-Ranges", "")
+
+        remote_size = int(content_length) if content_length else None
+        supports_resume = accept_ranges.lower() == "bytes"
+
+        return remote_size, supports_resume
+
+    except Exception as exc:
+        print(
+            f"[WARN] Could not query remote file size via HEAD request: {exc}\n"
+            f"       Will still try to download, but resume validation is weaker."
+        )
+        return None, False
 
 
 def _env_float(name: str, default: float) -> float:
@@ -148,29 +294,370 @@ def _require_ram(estimated_input_gb: float, operation: str) -> None:
 ###########################################################
 
 
-def download_file(url, local_path, model_size_gb):
-    """Download a model file if it is not present already."""
+def download_file(url, local_path, model_size_gb, check_sha256=False):
+    """
+    Robust resumable download for large DGT model files.
+
+    Features:
+    - never writes directly to the final .pkl file
+    - uses .part files for incomplete downloads
+    - resumes interrupted downloads using HTTP Range requests
+    - checks Content-Length when available
+    - optionally validates SHA256 if known
+    - only accepts the final file after all checks passed
+
+    Environment variables:
+    - DGT_DOWNLOAD_MAX_ATTEMPTS:
+        0 means retry forever.
+        Default: 0
+    - DGT_DOWNLOAD_RETRY_SLEEP:
+        seconds between failed attempts.
+        Default: 10
+    """
+
     local_path = Path(local_path)
+    part_path = local_path.with_suffix(local_path.suffix + ".part")
+
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if check_sha256:
+        expected_sha256 = expected_sha256_for(local_path)
+    else:
+        expected_sha256 = None
+        print(f"[INFO] SHA256 check disabled for {local_path}")
+
+    max_attempts = _env_int("DGT_DOWNLOAD_MAX_ATTEMPTS", 0)
+    retry_sleep = _env_int("DGT_DOWNLOAD_RETRY_SLEEP", 10)
+
+    remote_size, supports_resume = _get_remote_file_info(url)
+
+    if remote_size is not None:
+        print(
+            f"[INFO] Remote file size: {remote_size / BYTES_PER_GB:.2f} GB "
+            f"(resume supported: {supports_resume})"
+        )
+    else:
+        print("[WARN] Remote file size unknown.")
+
+    # ------------------------------------------------------------------
+    # Check existing final file
+    # ------------------------------------------------------------------
     if local_path.exists():
-        print(f"File {local_path} already exists. Skipping download.")
-        return
+        local_size = local_path.stat().st_size
+
+        if expected_sha256:
+            print(f"[INFO] Checking SHA256 for existing file: {local_path}")
+            current_sha256 = sha256_file(local_path)
+
+            if current_sha256 == expected_sha256:
+                print(
+                    f"[INFO] File {local_path} exists and SHA256 is valid. "
+                    f"Skipping download."
+                )
+                return
+
+            print(f"[WARN] SHA256 mismatch for existing file: {local_path}")
+            print(f"       expected: {expected_sha256}")
+            print(f"       got:      {current_sha256}")
+            print("       Removing invalid file and downloading again.")
+            local_path.unlink()
+
+        elif remote_size is not None:
+            if local_size == remote_size:
+                print(
+                    f"[INFO] File {local_path} exists and has expected size "
+                    f"({local_size / BYTES_PER_GB:.2f} GB). "
+                    f"No SHA256 known, accepting based on size."
+                )
+                return
+
+            elif local_size < remote_size:
+                print(
+                    f"[WARN] Existing file is smaller than remote file:\n"
+                    f"       local:  {local_size / BYTES_PER_GB:.2f} GB\n"
+                    f"       remote: {remote_size / BYTES_PER_GB:.2f} GB\n"
+                    f"       Moving it to {part_path} and resuming."
+                )
+
+                if part_path.exists():
+                    part_size = part_path.stat().st_size
+                    if part_size >= local_size:
+                        print(
+                            f"[INFO] Existing .part file is at least as large "
+                            f"as final file candidate. Removing final file."
+                        )
+                        local_path.unlink()
+                    else:
+                        part_path.unlink()
+                        local_path.rename(part_path)
+                else:
+                    local_path.rename(part_path)
+
+            else:
+                print(
+                    f"[WARN] Existing file is larger than remote file:\n"
+                    f"       local:  {local_size / BYTES_PER_GB:.2f} GB\n"
+                    f"       remote: {remote_size / BYTES_PER_GB:.2f} GB\n"
+                    f"       Removing invalid local file."
+                )
+                local_path.unlink()
+
+        else:
+            print(
+                f"[WARN] File {local_path} exists, but neither SHA256 nor "
+                f"remote size is known. Keeping existing file."
+            )
+            return
+
+    # ------------------------------------------------------------------
+    # Check disk space
+    # ------------------------------------------------------------------
+    already_downloaded = part_path.stat().st_size if part_path.exists() else 0
+
+    if remote_size is not None:
+        remaining_bytes = max(0, remote_size - already_downloaded)
+        required_gb = remaining_bytes / BYTES_PER_GB
+    else:
+        required_gb = model_size_gb
 
     free_space_gb = check_free_space(local_path.parent if local_path.parent.exists() else ".")
-    if free_space_gb < model_size_gb and "emissivities" in str(local_path):
+
+    if free_space_gb < required_gb and "emissivities" in str(local_path):
         raise RuntimeError(
-            f"Not enough disk space. Available: {free_space_gb:.2f} GB, "
-            f"required: {model_size_gb} GB"
+            f"Not enough disk space for model download.\n"
+            f"Available: {free_space_gb:.2f} GB\n"
+            f"Required:  {required_gb:.2f} GB\n"
+            f"Target:    {local_path}"
         )
 
-    print(f"Downloading {url} to {local_path}...")
-    local_path.parent.mkdir(parents=True, exist_ok=True)
-    with requests.get(url, stream=True, timeout=60) as response:
-        response.raise_for_status()
-        with local_path.open("wb") as file:
-            for block in response.iter_content(chunk_size=1024 * 1024):
-                if block:
-                    file.write(block)
-    print(f"Downloaded {local_path}")
+    # ------------------------------------------------------------------
+    # Clean up impossible .part files
+    # ------------------------------------------------------------------
+    if part_path.exists() and remote_size is not None:
+        part_size = part_path.stat().st_size
+
+        if part_size > remote_size:
+            print(
+                f"[WARN] Partial file is larger than remote file:\n"
+                f"       partial: {part_size / BYTES_PER_GB:.2f} GB\n"
+                f"       remote:  {remote_size / BYTES_PER_GB:.2f} GB\n"
+                f"       Removing partial file and restarting."
+            )
+            part_path.unlink()
+
+    # ------------------------------------------------------------------
+    # Download loop
+    # ------------------------------------------------------------------
+    attempt = 0
+
+    while True:
+        attempt += 1
+
+        if max_attempts and attempt > max_attempts:
+            raise RuntimeError(
+                f"Download did not complete after {max_attempts} attempts:\n"
+                f"  URL:    {url}\n"
+                f"  target: {local_path}\n"
+                f"Partial file kept for later resume:\n"
+                f"  {part_path}"
+            )
+
+        resume_from = part_path.stat().st_size if part_path.exists() else 0
+
+        if remote_size is not None and resume_from == remote_size:
+            print(
+                f"[INFO] Partial file already has expected size "
+                f"({resume_from / BYTES_PER_GB:.2f} GB)."
+            )
+            break
+
+        headers = {}
+
+        if resume_from > 0:
+            headers["Range"] = f"bytes={resume_from}-"
+            print(
+                f"[INFO] Resuming download attempt {attempt}: "
+                f"{resume_from / BYTES_PER_GB:.2f} GB already present"
+            )
+        else:
+            print(f"[INFO] Starting download attempt {attempt}: {url}")
+
+        try:
+            with requests.get(url, stream=True, headers=headers, timeout=60) as response:
+                # HTTP 416 can mean our .part file is already complete.
+                if response.status_code == 416 and remote_size is not None:
+                    current_size = part_path.stat().st_size if part_path.exists() else 0
+
+                    if current_size == remote_size:
+                        print("[INFO] Server reports requested range is complete.")
+                        break
+
+                    raise RuntimeError(
+                        f"Server returned HTTP 416, but partial file size "
+                        f"does not match remote size:\n"
+                        f"  partial: {current_size}\n"
+                        f"  remote:  {remote_size}"
+                    )
+
+                response.raise_for_status()
+
+                # If we requested a byte range but got HTTP 200 instead of 206,
+                # the server ignored the Range request. In that case we must
+                # restart from zero to avoid appending a full file to a partial file.
+                if resume_from > 0 and response.status_code == 200:
+                    print(
+                        "[WARN] Server ignored Range request. "
+                        "Restarting download from zero."
+                    )
+                    if part_path.exists():
+                        part_path.unlink()
+                    resume_from = 0
+                    mode = "wb"
+                else:
+                    mode = "ab" if resume_from > 0 else "wb"
+
+                downloaded_this_attempt = 0
+                last_report_gb = -1
+
+                with part_path.open(mode) as file:
+                    for block in response.iter_content(chunk_size=1024 * 1024):
+                        if not block:
+                            continue
+
+                        file.write(block)
+                        downloaded_this_attempt += len(block)
+
+                        current_size = resume_from + downloaded_this_attempt
+                        current_gb = int(current_size / BYTES_PER_GB)
+
+                        if current_gb != last_report_gb:
+                            last_report_gb = current_gb
+
+                            if remote_size is not None:
+                                pct = 100.0 * current_size / remote_size
+                                print(
+                                    f"[INFO] Downloaded "
+                                    f"{current_size / BYTES_PER_GB:.2f}/"
+                                    f"{remote_size / BYTES_PER_GB:.2f} GB "
+                                    f"({pct:.1f}%)",
+                                    end="\r",
+                                    flush=True,
+                                )
+                            else:
+                                print(
+                                    f"[INFO] Downloaded "
+                                    f"{current_size / BYTES_PER_GB:.2f} GB",
+                                    end="\r",
+                                    flush=True,
+                                )
+
+                print()
+
+        except Exception as exc:
+            current_size = part_path.stat().st_size if part_path.exists() else 0
+
+            print(
+                f"[WARN] Download attempt {attempt} failed:\n"
+                f"       {exc}\n"
+                f"       Partial file kept: {part_path}\n"
+                f"       Current partial size: {current_size / BYTES_PER_GB:.2f} GB"
+            )
+
+            if max_attempts and attempt >= max_attempts:
+                raise
+
+            print(f"[INFO] Retrying in {retry_sleep} seconds...")
+            time.sleep(retry_sleep)
+            continue
+
+        # --------------------------------------------------------------
+        # Completion test
+        # --------------------------------------------------------------
+        current_size = part_path.stat().st_size if part_path.exists() else 0
+
+        if remote_size is not None:
+            if current_size == remote_size:
+                print("[INFO] Download reached expected remote size.")
+                break
+
+            if current_size < remote_size:
+                print(
+                    f"[WARN] Download incomplete after attempt {attempt}:\n"
+                    f"       partial: {current_size / BYTES_PER_GB:.2f} GB\n"
+                    f"       remote:  {remote_size / BYTES_PER_GB:.2f} GB\n"
+                    f"       Continuing/resuming..."
+                )
+                time.sleep(retry_sleep)
+                continue
+
+            if current_size > remote_size:
+                print(
+                    f"[WARN] Partial file became larger than remote file. "
+                    f"Removing and restarting."
+                )
+                part_path.unlink()
+                time.sleep(retry_sleep)
+                continue
+
+        else:
+            # Without Content-Length, a successfully completed HTTP response is
+            # the best available signal unless SHA256 is known.
+            print(
+                "[WARN] Remote size unknown. Treating completed HTTP response "
+                "as complete for now."
+            )
+            break
+
+    # ------------------------------------------------------------------
+    # Final size check
+    # ------------------------------------------------------------------
+    final_size = part_path.stat().st_size
+
+    if remote_size is not None and final_size != remote_size:
+        raise RuntimeError(
+            f"Downloaded file size mismatch:\n"
+            f"  target:   {local_path}\n"
+            f"  expected: {remote_size / BYTES_PER_GB:.2f} GB\n"
+            f"  got:      {final_size / BYTES_PER_GB:.2f} GB\n"
+            f"Partial file kept for later resume:\n"
+            f"  {part_path}"
+        )
+
+    # ------------------------------------------------------------------
+    # Final SHA256 check
+    # ------------------------------------------------------------------
+    if expected_sha256:
+        print(f"[INFO] Checking SHA256 for downloaded file: {part_path}")
+        downloaded_sha256 = sha256_file(part_path)
+
+        if downloaded_sha256 != expected_sha256:
+            raise RuntimeError(
+                f"SHA256 mismatch after download:\n"
+                f"  target:   {local_path}\n"
+                f"  expected: {expected_sha256}\n"
+                f"  got:      {downloaded_sha256}\n\n"
+                f"The partial file was kept for inspection:\n"
+                f"  {part_path}\n\n"
+                f"If the expected hash is correct, delete the .part file and retry."
+            )
+
+        print("[INFO] SHA256 valid.")
+    else:
+        print(
+            f"[WARN] No SHA256 known for {local_path}. "
+            f"Accepting file based on HTTP completion and size only."
+        )
+
+    # ------------------------------------------------------------------
+    # Atomic finalisation
+    # ------------------------------------------------------------------
+    part_path.replace(local_path)
+
+    print(
+        f"[INFO] Download complete and finalised:\n"
+        f"       {local_path}\n"
+        f"       size: {final_size / BYTES_PER_GB:.2f} GB"
+    )
 
 
 ###########################################################
@@ -432,6 +919,7 @@ def read_and_save_reduced_chunks(
         while True:
             try:
                 obj = _read_one_pickle_from_stream(pk)
+            
             except EOFError:
                 rows, _ = _write_reduced_chunk(
                     chunk_objects,
@@ -444,6 +932,28 @@ def read_and_save_reduced_chunks(
                     f"kept {total_rows:,} reduced rows"
                 )
                 break
+            
+            except pickle.UnpicklingError as exc:
+                pos = pk.tell()
+                size = total_size
+            
+                raise RuntimeError(
+                    f"Model pickle appears to be corrupt or incomplete:\n"
+                    f"  file: {pklfile}\n"
+                    f"  read position: {pos / BYTES_PER_GB:.2f} GB "
+                    f"of {size / BYTES_PER_GB:.2f} GB\n"
+                    f"  objects read successfully: {n_objects:,}\n"
+                    f"  original pickle error: {exc}\n\n"
+                    f"Most likely cause: an interrupted or corrupt model download.\n"
+                    f"Recommended fix:\n"
+                    f"  rm -f {pklfile}\n"
+                    f"  rm -f {pklfile}.part\n"
+                    f"  rm -f {tmpdir}/{chunk_prefix}*.pkl\n"
+                    f"  python example.py\n\n"
+                    f"Once SHA256 hashes are available, add them to MODEL_SHA256 or place "
+                    f"a .sha256 sidecar file next to the model file."
+                ) from exc
+
 
             if not isinstance(obj, pd.DataFrame):
                 obj = pd.DataFrame(obj)
@@ -583,7 +1093,7 @@ def _read_csv_reduced(gridfile, selection: dict, chunksize=250_000):
 ############################################################
 
 
-def read_grid_ndist(transition, usertkin, userwidth, usertau, powerlaw, type_of_models="std", usecsv=False):
+def read_grid_ndist(transition, usertkin, userwidth, usertau, powerlaw, type_of_models="std", usecsv=False, check_sha256=False):
 
     if not powerlaw:
         if usecsv:

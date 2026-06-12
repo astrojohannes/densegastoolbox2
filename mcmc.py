@@ -301,7 +301,7 @@ def mymcmc(grid_theta, grid_loglike, ndim, nwalkers, interp, nsims, labels, conf
             sampler = emcee.EnsembleSampler(
                 nwalkers, ndim, getloglike,
                 args=([grid_theta, grid_loglike, interp]),
-                moves = moves,
+                #moves = moves,
                 pool=pool, backend=backend
             )
 
