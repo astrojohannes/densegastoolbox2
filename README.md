@@ -1,5 +1,7 @@
 # Dense Gas Toolbox #
-DOI: 10.5281/zenodo.3686329
+All versions DOI: 10.5281/zenodo.3686329
+Created by Johannes Puschnig
+www.jpuschnig.com
 
 # Aim
 Calculate density and temperature from observed molecular emission lines,
@@ -24,7 +26,23 @@ fit/derived parameters.
 
 # VERSION HISTORY
 
-- Dec 15, 2024 | Version 2.1
+- Jun 11, 2026 | Version 2.1
+
+    * Updated the code base for compatibility with Python 3.12 and Python 3.13.
+
+    * Updated the Python requirements to support the current Scientific Python stack, including NumPy 2.x.
+
+    * PTMCMCSampler and mpi4py are no longer imported unconditionally. They are only required when the optional parallel-tempered MCMC mode is used.
+
+    * Improved robustness of the model-grid loading procedure.
+
+    * Removed shell-dependent result formatting.
+
+    * Fixed several runtime issues exposed by newer Python versions.
+
+    * Added updated installation notes for Python >3.11.
+
+- Dec 15, 2024
 
    * Updated model grids, also including (4-3) transitions
 

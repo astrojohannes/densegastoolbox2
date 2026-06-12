@@ -16,6 +16,8 @@ psutil>=5.9
 requests>=2.31
 tabulate>=0.9
 
+tqdm
+
 # Optional, only needed when use_pt=True in example.py/dgt2.py:
 # mpi4py>=4.0.1
 # PTMCMCSampler
